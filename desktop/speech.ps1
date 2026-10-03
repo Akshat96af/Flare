@@ -1,5 +1,6 @@
 param([switch]$PushToTalk)
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 try {
   Add-Type -AssemblyName System.Speech
   Add-Type -ReferencedAssemblies System.Speech -TypeDefinition @'

@@ -3,11 +3,34 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
 const defaults = {
-  theme: 'system', shortcut: 'Alt+Space', voiceMode: 'auto', startup: false,
-  clipboard: false, trust: 'cautious', developer: false, content: true,
-  setup: false, roots: [], exclusions: ['node_modules', '.git', 'Windows', 'Program Files', 'Program Files (x86)', 'AppData', '$Recycle.Bin', 'System Volume Information', '.ssh', '.aws', '.cargo', '.cache', 'Files/private'],
+  theme: 'system',
+  shortcut: 'Alt+Space',
+  voiceMode: 'auto',
+  startup: false,
+  clipboard: false,
+  trust: 'cautious',
+  developer: false,
+  content: true,
+  setup: false,
+  roots: [],
+  exclusions: [
+    'node_modules',
+    '.git',
+    'Windows',
+    'Program Files',
+    'Program Files (x86)',
+    'AppData',
+    '$Recycle.Bin',
+    'System Volume Information',
+    '.ssh',
+    '.aws',
+    '.cargo',
+    '.cache',
+    'Files/private',
+  ],
   ai: { provider: 'off', model: '', speechCloud: false, localModel: '' },
-  recoveryDays: 0, confirmConversions: true
+  recoveryDays: 0,
+  confirmConversions: true,
 };
 
 function createStore(directory) {
@@ -26,16 +49,39 @@ function createStore(directory) {
     const row = db.prepare('SELECT value FROM preferences WHERE key=?').get(key);
     return row ? JSON.parse(row.value) : fallback;
   };
-  const set = (key, value) => db.prepare('INSERT OR REPLACE INTO preferences VALUES(?,?)').run(key, JSON.stringify(value));
+  const set = (key, value) =>
+    db.prepare('INSERT OR REPLACE INTO preferences VALUES(?,?)').run(key, JSON.stringify(value));
   return {
-    db, directory, get, set,
-    settings: () => ({ ...defaults, ...get('settings', {}), ai: { ...defaults.ai, ...get('settings', {}).ai } }),
-    saveSettings: value => set('settings', value),
-    putOperation: value => db.prepare('INSERT OR REPLACE INTO operations VALUES(?,?)').run(value.id, JSON.stringify(value)),
-    operations: () => db.prepare('SELECT data FROM operations ORDER BY rowid DESC LIMIT 100').all().map(row => JSON.parse(row.data)),
-    operation: id => { const row = db.prepare('SELECT data FROM operations WHERE id=?').get(id); return row ? JSON.parse(row.data) : null; },
-    touch: id => db.prepare('INSERT INTO usage VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET count=count+1,last=excluded.last').run(id, Date.now()),
-    close: () => db.close()
+    db,
+    directory,
+    get,
+    set,
+    settings: () => ({
+      ...defaults,
+      ...get('settings', {}),
+      ai: { ...defaults.ai, ...get('settings', {}).ai },
+    }),
+    saveSettings: (value) => set('settings', value),
+    putOperation: (value) =>
+      db
+        .prepare('INSERT OR REPLACE INTO operations VALUES(?,?)')
+        .run(value.id, JSON.stringify(value)),
+    operations: () =>
+      db
+        .prepare('SELECT data FROM operations ORDER BY rowid DESC LIMIT 100')
+        .all()
+        .map((row) => JSON.parse(row.data)),
+    operation: (id) => {
+      const row = db.prepare('SELECT data FROM operations WHERE id=?').get(id);
+      return row ? JSON.parse(row.data) : null;
+    },
+    touch: (id) =>
+      db
+        .prepare(
+          'INSERT INTO usage VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET count=count+1,last=excluded.last',
+        )
+        .run(id, Date.now()),
+    close: () => db.close(),
   };
 }
 module.exports = { createStore, defaults };

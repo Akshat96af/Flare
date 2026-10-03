@@ -1,5 +1,7 @@
 param([string]$Action)
 $ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $payload = [Console]::In.ReadToEnd() | ConvertFrom-Json
 try {
   switch ($Action) {
@@ -17,36 +19,41 @@ try {
       foreach ($device in $devices) { Invoke-CimMethod -InputObject $device -MethodName WmiSetBrightness -Arguments @{ Timeout = [uint32]1; Brightness = $value } | Out-Null }
       @{ value = $value } | ConvertTo-Json -Depth 3 -Compress
     }
-    'volume' {
+    { $_ -in 'volume','audio-status' } {
       Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class Enumerator {}
 [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IEnumerator {
- int EnumAudioEndpoints(int flow, int mask, out IntPtr devices);
- int GetDefaultAudioEndpoint(int flow,int role,out IDevice device);
+ [PreserveSig] int EnumAudioEndpoints(int flow, int mask, out IntPtr devices);
+ [PreserveSig] int GetDefaultAudioEndpoint(int flow,int role,out IDevice device);
 }
 [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IDevice {
- int Activate(ref Guid iid,int context,IntPtr parameters,[MarshalAs(UnmanagedType.IUnknown)] out object result);
+ [PreserveSig] int Activate(ref Guid iid,int context,IntPtr parameters,[MarshalAs(UnmanagedType.IUnknown)] out object result);
 }
 [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IVolume {
- int RegisterControlChangeNotify(IntPtr x); int UnregisterControlChangeNotify(IntPtr x); int GetChannelCount(out uint n);
- int SetMasterVolumeLevel(float n,Guid context); int SetMasterVolumeLevelScalar(float n,Guid context);
- int GetMasterVolumeLevel(out float n); int GetMasterVolumeLevelScalar(out float n);
+ [PreserveSig] int RegisterControlChangeNotify(IntPtr x); [PreserveSig] int UnregisterControlChangeNotify(IntPtr x); [PreserveSig] int GetChannelCount(out uint n);
+ [PreserveSig] int SetMasterVolumeLevel(float n,ref Guid context); [PreserveSig] int SetMasterVolumeLevelScalar(float n,ref Guid context);
+ [PreserveSig] int GetMasterVolumeLevel(out float n); [PreserveSig] int GetMasterVolumeLevelScalar(out float n);
 }
 public static class Audio {
- public static void Set(float value) { var e=(IEnumerator)new Enumerator(); IDevice d; Marshal.ThrowExceptionForHR(e.GetDefaultAudioEndpoint(0,1,out d)); var id=typeof(IVolume).GUID; object v; Marshal.ThrowExceptionForHR(d.Activate(ref id,23,IntPtr.Zero,out v)); Marshal.ThrowExceptionForHR(((IVolume)v).SetMasterVolumeLevelScalar(value,Guid.Empty)); }
+ static IVolume Endpoint() { var e=(IEnumerator)new Enumerator(); IDevice d; Marshal.ThrowExceptionForHR(e.GetDefaultAudioEndpoint(0,1,out d)); var id=typeof(IVolume).GUID; object v; Marshal.ThrowExceptionForHR(d.Activate(ref id,23,IntPtr.Zero,out v)); return (IVolume)v; }
+ public static void Set(float value) { var context=Guid.Empty; Marshal.ThrowExceptionForHR(Endpoint().SetMasterVolumeLevelScalar(value,ref context)); }
+ public static float Read() { float value; Marshal.ThrowExceptionForHR(Endpoint().GetMasterVolumeLevelScalar(out value)); return value; }
 }
 '@
-      $value = [Math]::Max(0,[Math]::Min(100,[int]$payload.value))
-      [Audio]::Set($value / 100.0)
+      $value = [Audio]::Read() * 100
+      if ($Action -eq 'volume') { $value = [Math]::Max(0,[Math]::Min(100,[int]$payload.value)); [Audio]::Set($value / 100.0) }
       @{ value = $value } | ConvertTo-Json -Depth 3 -Compress
     }
     'search' {
       $q = ([string]$payload.query).Replace("'", "''").Replace('%','').Replace('_','')
+      $scopes = @($payload.roots | ForEach-Object { "SCOPE='file:" + ([string]$_).Replace('\','/').Replace("'","''") + "'" })
+      if ($scopes.Count -eq 0) { throw 'Choose search locations first.' }
+      $scope = '(' + ($scopes -join ' OR ') + ')'
       $connection = New-Object -ComObject ADODB.Connection
       $connection.Open("Provider=Search.CollatorDSO;Extended Properties='Application=Windows';")
-      $rows = $connection.Execute("SELECT TOP 30 System.ItemPathDisplay,System.FileName FROM SystemIndex WHERE System.FileName LIKE '%$q%'")
+      $rows = $connection.Execute("SELECT TOP 30 System.ItemPathDisplay,System.FileName FROM SystemIndex WHERE $scope AND System.FileName LIKE '%$q%'")
       $items = @()
       while (-not $rows.EOF) { $items += @{ path = [string]$rows.Fields.Item(0).Value; title = [string]$rows.Fields.Item(1).Value }; $rows.MoveNext() }
       $rows.Close(); $connection.Close()
