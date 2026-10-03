@@ -9,8 +9,8 @@ const AxeBuilder = require('@axe-core/playwright').default;
   const env = { ...process.env, FLARE_DATA_DIR: path.join(directory, 'data') };
   delete env.ELECTRON_RUN_AS_NODE;
   const instance = await electron.launch({
-    executablePath: process.env.FLARE_SMOKE_EXE||require('electron'),
-    args: process.env.FLARE_SMOKE_EXE?['--portable']:['.'],
+    executablePath: process.env.FLARE_SMOKE_EXE || require('electron'),
+    args: process.env.FLARE_SMOKE_EXE ? ['--portable'] : ['.'],
     cwd: path.resolve('.'),
     env,
     timeout: 60000,
@@ -41,6 +41,15 @@ const AxeBuilder = require('@axe-core/playwright').default;
     };
     await audit('empty');
     await page.screenshot({ path: path.join(directory, '01-empty-dark.png') });
+    if (process.env.FLARE_PUBLIC_SHOTS) {
+      await fs.mkdir(path.resolve('docs/images'), { recursive: true });
+      await page
+        .locator('.launcher')
+        .screenshot({
+          path: path.resolve('docs/images/launcher-dark.png'),
+          animations: 'disabled',
+        });
+    }
     await page.getByRole('combobox', { name: 'Search Flare' }).fill('Notepad');
     await page.getByRole('option').first().waitFor({ timeout: 30000 });
     await page.screenshot({ path: path.join(directory, '02-search.png') });
@@ -54,31 +63,105 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await page.getByRole('button', { name: 'light theme' }).click();
     await page.screenshot({ path: path.join(directory, '03-settings-light.png') });
     await audit('settings-light');
+    if (process.env.FLARE_PUBLIC_SHOTS)
+      await page
+        .locator('.launcher')
+        .screenshot({
+          path: path.resolve('docs/images/settings-light.png'),
+          animations: 'disabled',
+        });
     await page.getByRole('button', { name: 'Close settings' }).click();
     await page.getByRole('button', { name: 'File tools', exact: true }).click();
     await page.getByText('Images to PDF', { exact: true }).click();
     await page.screenshot({ path: path.join(directory, '04-tools-light.png') });
     await audit('tools-light');
-    const files=path.join(directory,'selected'),output=path.join(directory,'outputs');await fs.mkdir(files);await fs.mkdir(output);
-    const source=path.join(files,'studio-sample.png');await require('sharp')({create:{width:640,height:400,channels:3,background:'#89dcf3'}}).png().toFile(source);
-    const picker=paths=>instance.evaluate(({dialog},filePaths)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths});},paths);
-    await picker([source]);await page.getByRole('button',{name:'Choose images',exact:true}).click();
-    await picker([output]);await page.getByRole('button',{name:'Choose an output folder',exact:true}).click();
-    await page.getByRole('button',{name:'Preview changes',exact:true}).click();await page.getByRole('checkbox',{name:'Include studio-sample.png'}).waitFor();await audit('conversion-plan');
-    await page.screenshot({path:path.join(directory,'05-plan.png')});await page.getByRole('button',{name:'Confirm & run'}).click();await page.locator('.history-panel').waitFor({timeout:30000});
-    const operations=await page.evaluate(()=>window.flare.call('history'));assert.equal(operations[0].status,'done');const generated=operations[0].items[0].to;
-    assert.equal((await require('pdf-lib').PDFDocument.load(await fs.readFile(generated))).getPageCount(),1);await audit('history');await page.screenshot({path:path.join(directory,'06-history.png')});
-    await page.getByRole('button',{name:'Undo',exact:true}).click();await page.waitForFunction(async()=>(await window.flare.call('history'))[0].status==='undone');await assert.rejects(fs.access(generated));await fs.access(source);
-    await page.getByRole('button',{name:'Close history'}).click();await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Search locations/}).click();
-    await picker([files]);await page.getByRole('button',{name:'Add folder'}).click();await page.waitForFunction(async()=>(await window.flare.call('snapshot')).index.state==='ready',{timeout:30000});
+    const files = path.join(directory, 'selected'),
+      output = path.join(directory, 'outputs');
+    await fs.mkdir(files);
+    await fs.mkdir(output);
+    const source = path.join(files, 'studio-sample.png');
+    await require('sharp')({
+      create: { width: 640, height: 400, channels: 3, background: '#89dcf3' },
+    })
+      .png()
+      .toFile(source);
+    const picker = (paths) =>
+      instance.evaluate(({ dialog }, filePaths) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths });
+      }, paths);
+    await picker([source]);
+    await page.getByRole('button', { name: 'Choose images', exact: true }).click();
+    await picker([output]);
+    await page.locator('.folder-choice').click();
+    await page.getByRole('button', { name: 'Preview changes', exact: true }).click();
+    await page.getByRole('checkbox', { name: 'Include studio-sample.png' }).waitFor();
+    await audit('conversion-plan');
+    await page.screenshot({ path: path.join(directory, '05-plan.png') });
+    await page.getByRole('button', { name: 'Confirm & run' }).click();
+    await page.locator('.history-panel').waitFor({ timeout: 30000 });
+    const operations = await page.evaluate(() => window.flare.call('history'));
+    assert.equal(operations[0].status, 'done');
+    const generated = operations[0].items[0].to;
+    assert.equal(
+      (await require('pdf-lib').PDFDocument.load(await fs.readFile(generated))).getPageCount(),
+      1,
+    );
+    await audit('history');
+    await page.screenshot({ path: path.join(directory, '06-history.png') });
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.waitForFunction(
+      async () => (await window.flare.call('history'))[0].status === 'undone',
+    );
+    await assert.rejects(fs.access(generated));
+    await fs.access(source);
+    await page.getByRole('button', { name: 'Close history' }).click();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: /Search locations/ }).click();
+    await picker([files]);
+    await page.getByRole('button', { name: 'Add folder' }).click();
+    await page.waitForFunction(
+      async () => (await window.flare.call('snapshot')).index.state === 'ready',
+      { timeout: 30000 },
+    );
     // The fixture is deliberately under Files/private, so indexing must not expose it by default.
-    assert.equal((await page.evaluate(()=>window.flare.call('search',{query:'studio-sample'}))).length,0);
-    await page.evaluate(()=>window.flare.call('settings',{exclusions:['node_modules']}));await page.waitForFunction(async()=>(await window.flare.call('snapshot')).index.state==='ready',{timeout:30000});
-    await page.getByRole('button',{name:'Close settings'}).click();await page.getByRole('combobox',{name:'Search Flare'}).fill('studio-sample');await page.getByRole('button',{name:'Preview studio-sample.png'}).click();await page.locator('.file-preview').waitFor();await page.getByRole('button',{name:'File details'}).click();await audit('image-preview');await page.screenshot({path:path.join(directory,'07-preview.png')});
-    await page.keyboard.press('Escape');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Intelligence/}).click();await audit('ai-settings');
-    await page.getByRole('button',{name:'Close settings'}).click();await page.getByRole('combobox',{name:'Search Flare'}).fill('');
-    await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.launcher').evaluate(node=>getComputedStyle(node).animationDuration),'1e-05s');
-    await instance.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(380,720));await page.getByRole('button',{name:'Settings',exact:true}).click();await audit('settings-narrow');await page.screenshot({path:path.join(directory,'08-narrow.png')});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    assert.equal(
+      (await page.evaluate(() => window.flare.call('search', { query: 'studio-sample' }))).length,
+      0,
+    );
+    await page.evaluate(() => window.flare.call('settings', { exclusions: ['node_modules'] }));
+    await page.waitForFunction(
+      async () => (await window.flare.call('snapshot')).index.state === 'ready',
+      { timeout: 30000 },
+    );
+    await page.getByRole('button', { name: 'Close settings' }).click();
+    await page.getByRole('combobox', { name: 'Search Flare' }).fill('studio-sample');
+    await page.getByRole('button', { name: 'Preview studio-sample.png' }).click();
+    await page.locator('.file-preview').waitFor();
+    await page.getByRole('button', { name: 'File details' }).click();
+    await audit('image-preview');
+    await page.screenshot({ path: path.join(directory, '07-preview.png') });
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: /Intelligence/ }).click();
+    await audit('ai-settings');
+    await page.getByRole('button', { name: 'Close settings' }).click();
+    await page.getByRole('combobox', { name: 'Search Flare' }).fill('');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    assert.ok(
+      await page
+        .locator('.launcher')
+        .evaluate((node) => parseFloat(getComputedStyle(node).animationDuration) < 0.001),
+    );
+    await instance.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(380, 720),
+    );
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await audit('settings-narrow');
+    await page.screenshot({ path: path.join(directory, '08-narrow.png') });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+      false,
+    );
     await fs.writeFile(path.join(directory, 'accessibility.json'), JSON.stringify(audits, null, 2));
     assert.equal(
       audits.reduce((sum, x) => sum + x.violations.length, 0),

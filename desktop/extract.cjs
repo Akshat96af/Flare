@@ -29,12 +29,33 @@ const textExtensions = new Set([
 async function pdfModule() {
   return import('pdfjs-dist/legacy/build/pdf.mjs');
 }
+async function validateOffice(file) {
+  return new Promise((resolve, reject) => {
+    yauzl.open(file, { lazyEntries: true }, (error, zip) => {
+      if (error) return reject(error);
+      let total = 0,
+        count = 0;
+      zip.on('error', reject);
+      zip.on('end', resolve);
+      zip.on('entry', (entry) => {
+        total += entry.uncompressedSize;
+        if (total > 24 * 1024 * 1024 || ++count > 10000) {
+          zip.close();
+          reject(new Error('Office document is too large to unpack.'));
+        } else zip.readEntry();
+      });
+      zip.readEntry();
+    });
+  });
+}
 async function extract(file, size) {
   if (size > 12 * 1024 * 1024) return '';
   const ext = path.extname(file).toLowerCase();
   if (textExtensions.has(ext)) return (await fs.readFile(file, 'utf8')).slice(0, 160000);
-  if (ext === '.docx')
+  if (ext === '.docx') {
+    await validateOffice(file);
     return (await require('mammoth').extractRawText({ path: file })).value.slice(0, 160000);
+  }
   if (ext === '.pdf') {
     const pdf = await pdfModule();
     const loading = pdf.getDocument({
@@ -79,17 +100,22 @@ async function extract(file, size) {
             stream.on('error', reject);
             stream.on('data', (x) => chunks.push(x));
             stream.on('end', () => {
-              const data = parser.parse(Buffer.concat(chunks).toString('utf8'));
-              const visit = (x) => {
-                if (!x || typeof x !== 'object') return;
-                for (const [k, v] of Object.entries(x)) {
-                  if (k === 'a:t' || k === 't' || k === 'v') parts.push(String(v));
-                  else if (Array.isArray(v)) v.forEach(visit);
-                  else visit(v);
-                }
-              };
-              visit(data);
-              zip.readEntry();
+              try {
+                const data = parser.parse(Buffer.concat(chunks).toString('utf8'));
+                const visit = (x) => {
+                  if (!x || typeof x !== 'object') return;
+                  for (const [k, v] of Object.entries(x)) {
+                    if (k === 'a:t' || k === 't' || k === 'v') parts.push(String(v));
+                    else if (Array.isArray(v)) v.forEach(visit);
+                    else visit(v);
+                  }
+                };
+                visit(data);
+                zip.readEntry();
+              } catch (error) {
+                zip.close();
+                reject(error);
+              }
             });
           });
         });

@@ -212,3 +212,108 @@ test('production defaults protect private and excluded operation folders', async
   await assert.rejects(ops.planFolder(dir, 'organize'), /protected or excluded/);
   store.close();
 });
+async function officeZip(file, parts) {
+  const { ZipFile } = require('yazl'),
+    zip = new ZipFile();
+  for (const [name, content] of Object.entries(parts)) zip.addBuffer(Buffer.from(content), name);
+  zip.end();
+  const chunks = [];
+  for await (const chunk of zip.outputStream) chunks.push(chunk);
+  await fs.writeFile(file, Buffer.concat(chunks));
+}
+test('Office and PDF content extraction reads format-aware fixtures', async () => {
+  const dir = await fixture('office'),
+    { extract } = require('../desktop/extract.cjs');
+  const data = {
+    'sample.docx': {
+      '[Content_Types].xml':
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+      'word/document.xml':
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Orchid renovation budget</w:t></w:r></w:p></w:body></w:document>',
+    },
+    'sample.xlsx': {
+      'xl/sharedStrings.xml': '<sst><si><t>Orchid renovation budget</t></si></sst>',
+      'xl/worksheets/sheet1.xml':
+        '<worksheet><sheetData><row><c><v>24000</v></c></row></sheetData></worksheet>',
+    },
+    'sample.pptx': {
+      'ppt/slides/slide1.xml':
+        '<p:sld xmlns:p="p" xmlns:a="a"><a:p><a:r><a:t>Orchid renovation budget</a:t></a:r></a:p></p:sld>',
+    },
+  };
+  for (const [name, parts] of Object.entries(data)) {
+    const file = path.join(dir, name);
+    await officeZip(file, parts);
+    assert.match(await extract(file, (await fs.stat(file)).size), /Orchid renovation budget/);
+  }
+  const pdf = await PDFDocument.create(),
+    page = pdf.addPage();
+  page.drawText('Orchid renovation budget');
+  const file = path.join(dir, 'sample.pdf');
+  await fs.writeFile(file, await pdf.save());
+  assert.match(await extract(file, (await fs.stat(file)).size), /Orchid renovation budget/);
+});
+test('revoked search locations and disabled content take effect immediately', async () => {
+  const dir = await fixture('revoked'),
+    store = createStore(path.join(dir, 'state'));
+  store.saveSettings({ ...store.settings(), roots: [dir] });
+  const search = new Search(store, () => {});
+  search.put({
+    id: 'file:test',
+    title: 'budget.md',
+    path: path.join(dir, 'budget.md'),
+    kind: 'file',
+  });
+  store.db.prepare('INSERT INTO content_fts VALUES(?,?,?)').run('file:test', 'budget.md', 'orchid');
+  assert.equal(search.query('orchid').length, 1);
+  store.saveSettings({ ...store.settings(), content: false });
+  assert.equal(search.query('orchid').length, 0);
+  store.saveSettings({ ...store.settings(), roots: [] });
+  assert.equal(search.query('budget').length, 0);
+  assert.equal(search.get('file:test'), null);
+  store.close();
+});
+test('cloud audio uses binary bytes and rejects unapproved uploads', async () => {
+  const ai = require('../desktop/ai.cjs'),
+    original = global.fetch;
+  let uploaded;
+  global.fetch = async (_url, options) => {
+    uploaded = options.body.get('file');
+    return new Response(JSON.stringify({ text: 'open YouTube' }), { status: 200 });
+  };
+  try {
+    await assert.rejects(
+      ai.transcribe(
+        [1, 2, 255],
+        'audio/webm',
+        { provider: 'openai', speechCloud: false },
+        'fixture-key',
+      ),
+      /Enable online/,
+    );
+    assert.equal(
+      await ai.transcribe(
+        [1, 2, 255],
+        'audio/webm',
+        { provider: 'openai', speechCloud: true },
+        'fixture-key',
+      ),
+      'open YouTube',
+    );
+    assert.deepEqual(Array.from(new Uint8Array(await uploaded.arrayBuffer())), [1, 2, 255]);
+  } finally {
+    global.fetch = original;
+  }
+});
+test('background query worker returns ranked local results', async () => {
+  const dir = await fixture('query-worker'),
+    store = createStore(dir),
+    search = new Search(store, () => {});
+  search.put({ id: 'app:fixture', title: 'Orchid', path: 'fixture', kind: 'app' });
+  try {
+    assert.equal((await search.queryAsync('orchid', 'all'))[0].title, 'Orchid');
+  } finally {
+    search.close();
+    store.close();
+  }
+});

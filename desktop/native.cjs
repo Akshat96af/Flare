@@ -1,7 +1,8 @@
 const { spawn } = require('node:child_process');
 const path = require('node:path');
-const scriptPath=name=>path.join(__dirname.replace(/app\.asar([\\/])/,'app.asar.unpacked$1'),name);
-let user32, attributes,moveFile,lastError;
+const scriptPath = (name) =>
+  path.join(__dirname.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1'), name);
+let user32, attributes, moveFile, lastError;
 function win32() {
   if (process.platform !== 'win32') return null;
   if (!user32) {
@@ -59,12 +60,23 @@ function unsafeFile(file) {
   const flags = fileAttributes(file);
   return flags === 0xffffffff || (flags & (0x2 | 0x4 | 0x400 | 0x1000 | 0x400000)) !== 0;
 }
-function moveNative(from,to){
-  if(process.platform!=='win32')return false;
-  if(!moveFile){const lib=require('koffi').load('kernel32.dll');moveFile=lib.func('int __stdcall MoveFileExW(str16 from,str16 to,uint32 flags)');lastError=lib.func('uint32 __stdcall GetLastError()');}
-  if(moveFile(from,to,8))return true;
-  const code=lastError();if(code===17)return false;
-  const error=new Error(code===80||code===183?'Destination already exists. Nothing was overwritten.':'Windows could not move this file (code '+code+').');error.code=code===80||code===183?'EEXIST':'EPERM';throw error;
+function moveNative(from, to) {
+  if (process.platform !== 'win32') return false;
+  if (!moveFile) {
+    const lib = require('koffi').load('kernel32.dll');
+    moveFile = lib.func('int __stdcall MoveFileExW(str16 from,str16 to,uint32 flags)');
+    lastError = lib.func('uint32 __stdcall GetLastError()');
+  }
+  if (moveFile(from, to, 8)) return true;
+  const code = lastError();
+  if (code === 17) return false;
+  const error = new Error(
+    code === 80 || code === 183
+      ? 'Destination already exists. Nothing was overwritten.'
+      : 'Windows could not move this file (code ' + code + ').',
+  );
+  error.code = code === 80 || code === 183 ? 'EEXIST' : 'EPERM';
+  throw error;
 }
 function powershell(command, data = {}, timeout = 15000) {
   return new Promise((resolve, reject) => {
@@ -106,4 +118,12 @@ function powershell(command, data = {}, timeout = 15000) {
     child.stdin.end(JSON.stringify(data));
   });
 }
-module.exports = { chordHeld, foregroundBounds, powershell, fileAttributes, unsafeFile,scriptPath,moveNative };
+module.exports = {
+  chordHeld,
+  foregroundBounds,
+  powershell,
+  fileAttributes,
+  unsafeFile,
+  scriptPath,
+  moveNative,
+};

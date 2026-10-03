@@ -3,7 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { createReadStream, constants } = require('node:fs');
 const { imageExtensions } = require('./search.cjs');
-const { unsafeFile,moveNative } = require('./native.cjs');
+const { unsafeFile, moveNative } = require('./native.cjs');
 const { excluded } = require('./scope.cjs');
 async function fingerprint(file) {
   const hash = crypto.createHash('sha256');
@@ -30,8 +30,9 @@ async function unlinkRetry(file) {
 }
 async function moveSafe(from, to, expected) {
   await fs.mkdir(path.dirname(to), { recursive: true });
-  if(expected&&await fingerprint(from)!==expected)throw new Error('Source changed before moving.');
-  if(moveNative(from,to))return;
+  if (expected && (await fingerprint(from)) !== expected)
+    throw new Error('Source changed before moving.');
+  if (moveNative(from, to)) return;
   // Exclusive copy prevents races from overwriting files, including across drives.
   await fs.copyFile(from, to, constants.COPYFILE_EXCL);
   const source = await fingerprint(from),
@@ -143,9 +144,28 @@ class Operations {
         throw new Error('Select at least one valid file.');
       plan.items = plan.items.filter((_, i) => selection.includes(i));
     }
-    if(!plan.items.length)throw new Error('No files selected.');
-    const budget=new Map();for(const item of plan.items){let directory=path.dirname(item.to);while(!await exists(directory)){const parent=path.dirname(directory);if(parent===directory)throw new Error('Output drive is unavailable.');directory=parent;}const volume=path.parse(directory).root;budget.set(volume,{directory,bytes:(budget.get(volume)?.bytes||0)+(plan.type==='convert'?Math.max(item.size*4,16*1024*1024):item.size)});}
-    for(const value of budget.values()){const stats=await fs.statfs(value.directory);if(stats.bavail*stats.bsize<value.bytes+64*1024*1024)throw new Error('Not enough free space for this operation and recovery.');}
+    if (!plan.items.length) throw new Error('No files selected.');
+    const budget = new Map();
+    for (const item of plan.items) {
+      let directory = path.dirname(item.to);
+      while (!(await exists(directory))) {
+        const parent = path.dirname(directory);
+        if (parent === directory) throw new Error('Output drive is unavailable.');
+        directory = parent;
+      }
+      const volume = path.parse(directory).root;
+      budget.set(volume, {
+        directory,
+        bytes:
+          (budget.get(volume)?.bytes || 0) +
+          (plan.type === 'convert' ? Math.max(item.size * 4, 16 * 1024 * 1024) : item.size),
+      });
+    }
+    for (const value of budget.values()) {
+      const stats = await fs.statfs(value.directory);
+      if (stats.bavail * stats.bsize < value.bytes + 64 * 1024 * 1024)
+        throw new Error('Not enough free space for this operation and recovery.');
+    }
     this.plans.delete(id);
     this.running = true;
     this.cancel = false;

@@ -79,13 +79,15 @@ export default function App() {
         setIndex(data.index);
         setDark(data.dark);
         setShortcutError(data.shortcutError || '');
-        if(data.contentHeight)document.documentElement.style.setProperty('--content-height',data.contentHeight+'px');
+        if (data.contentHeight)
+          document.documentElement.style.setProperty('--content-height', data.contentHeight + 'px');
       })
       .catch((e) => setError(e.message));
     document.documentElement.dataset.environment = desktop ? 'desktop' : 'browser';
     const disposers = [
       bridge.on('activation', (data) => {
-        if(data.contentHeight)document.documentElement.style.setProperty('--content-height',data.contentHeight+'px');
+        if (data.contentHeight)
+          document.documentElement.style.setProperty('--content-height', data.contentHeight + 'px');
         if (!busyRef.current) {
           setView(data.mode === 'settings' ? 'settings' : 'search');
           setQuery('');

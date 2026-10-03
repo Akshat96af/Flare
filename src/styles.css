@@ -865,7 +865,17 @@ select {
   border-top: 1px solid var(--line);
   animation: contentIn 0.25s ease-out;
 }
-.search-content:has(.preview-panel) .result-list{max-height:174px}.section-heading h2,.history-top h3{overflow-wrap:anywhere}.history-top>div{min-width:0;flex:1}
+.search-content:has(.preview-panel) .result-list {
+  max-height: 174px;
+}
+.section-heading h2,
+.history-top h3 {
+  overflow-wrap: anywhere;
+}
+.history-top > div {
+  min-width: 0;
+  flex: 1;
+}
 .preview-panel .section-heading {
   margin-bottom: 12px;
 }

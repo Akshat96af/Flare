@@ -34,10 +34,17 @@ const path = require('node:path');
       sections.join('\n-----------------------------\n'),
   );
   console.log('Collected ' + sections.length + ' runtime dependency notices.');
-  for(const [file,url] of [
-    ['libvips-LICENSE.txt','https://raw.githubusercontent.com/libvips/libvips/v8.18.7/LICENSE'],
-    ['native-imaging-NOTICES.md','https://raw.githubusercontent.com/lovell/sharp-libvips/main/THIRD-PARTY-NOTICES.md'],
-  ]){const response=await fetch(url,{signal:AbortSignal.timeout(20000)});if(!response.ok)throw new Error('Could not retrieve native library notices: '+url);await fs.writeFile(path.join(root,'notices',file),await response.text());}
+  for (const [file, url] of [
+    ['libvips-LICENSE.txt', 'https://raw.githubusercontent.com/libvips/libvips/v8.18.7/LICENSE'],
+    [
+      'native-imaging-NOTICES.md',
+      'https://raw.githubusercontent.com/lovell/sharp-libvips/main/THIRD-PARTY-NOTICES.md',
+    ],
+  ]) {
+    const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    if (!response.ok) throw new Error('Could not retrieve native library notices: ' + url);
+    await fs.writeFile(path.join(root, 'notices', file), await response.text());
+  }
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

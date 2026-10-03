@@ -22,7 +22,7 @@ const { createStore } = require('./store.cjs');
 const { Search, commonRoots } = require('./search.cjs');
 const { Operations } = require('./operations.cjs');
 const { interpretLocal } = require('./commands.cjs');
-const { chordHeld, foregroundBounds, powershell,scriptPath } = require('./native.cjs');
+const { chordHeld, foregroundBounds, powershell, scriptPath } = require('./native.cjs');
 const ai = require('./ai.cjs');
 
 const isolated = process.env.FLARE_DATA_DIR;
@@ -76,7 +76,13 @@ function show() {
   position();
   win.show();
   win.focus();
-  send('activation', { mode: 'search',contentHeight:Math.max(100,Math.min(560,screen.getDisplayMatching(win.getBounds()).workArea.height-340)) });
+  send('activation', {
+    mode: 'search',
+    contentHeight: Math.max(
+      100,
+      Math.min(560, screen.getDisplayMatching(win.getBounds()).workArea.height - 340),
+    ),
+  });
 }
 function register(shortcut) {
   globalShortcut.unregisterAll();
@@ -363,7 +369,10 @@ async function dispatch(method, data = {}) {
         portable,
         shortcutError,
         ready,
-        contentHeight:Math.max(100,Math.min(560,screen.getDisplayMatching(win.getBounds()).workArea.height-340)),
+        contentHeight: Math.max(
+          100,
+          Math.min(560, screen.getDisplayMatching(win.getBounds()).workArea.height - 340),
+        ),
         dark: nativeTheme.shouldUseDarkColors,
         roots: commonRoots(),
       };
