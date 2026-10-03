@@ -165,7 +165,15 @@ export default function App() {
         });
     }, 80);
     return () => clearTimeout(timer);
-  }, [query, kind, settings?.roots, settings?.content, settings?.clipboard]);
+  }, [
+    query,
+    kind,
+    settings?.roots,
+    settings?.content,
+    settings?.clipboard,
+    index.state === 'ready',
+    index.state === 'ready' ? index.count : 0,
+  ]);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(''), 4000);

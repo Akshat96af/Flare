@@ -77,7 +77,7 @@
         "nsis",
         "zip"
       ],
-      "signAndEditExecutable": false
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": false,

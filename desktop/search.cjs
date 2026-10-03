@@ -183,15 +183,19 @@ class Search {
     this.worker = new Worker(path.join(__dirname, 'index-worker.cjs'), {
       workerData: { directory: this.store.directory, settings, force },
     });
+    const worker = this.worker;
     this.worker.on('message', (status) => {
+      if (this.worker !== worker) return;
       this.status = status;
       this.emit('index', status);
     });
     this.worker.on('error', (error) => {
+      if (this.worker !== worker) return;
       this.status = { ...this.status, state: 'error', current: error.message };
       this.emit('index', this.status);
     });
     this.worker.on('exit', () => {
+      if (this.worker !== worker) return;
       this.worker = null;
       if (this.changed) {
         this.changed = false;

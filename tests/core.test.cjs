@@ -317,3 +317,22 @@ test('background query worker returns ranked local results', async () => {
     store.close();
   }
 });
+test('background query sees updated locations and newly indexed files', async () => {
+  const dir = await fixture('worker-refresh'),
+    store = createStore(path.join(dir, 'state')),
+    search = new Search(store, () => {});
+  try {
+    assert.deepEqual(await search.queryAsync('studio-sample', 'all'), []);
+    store.saveSettings({ ...store.settings(), roots: [dir], exclusions: ['node_modules'] });
+    search.put({
+      id: 'file:fixture',
+      title: 'studio-sample.png',
+      path: path.join(dir, 'studio-sample.png'),
+      kind: 'file',
+    });
+    assert.equal((await search.queryAsync('studio-sample', 'all'))[0]?.title, 'studio-sample.png');
+  } finally {
+    search.close();
+    store.close();
+  }
+});

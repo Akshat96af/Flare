@@ -43,12 +43,10 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await page.screenshot({ path: path.join(directory, '01-empty-dark.png') });
     if (process.env.FLARE_PUBLIC_SHOTS) {
       await fs.mkdir(path.resolve('docs/images'), { recursive: true });
-      await page
-        .locator('.launcher')
-        .screenshot({
-          path: path.resolve('docs/images/launcher-dark.png'),
-          animations: 'disabled',
-        });
+      await page.locator('.launcher').screenshot({
+        path: path.resolve('docs/images/launcher-dark.png'),
+        animations: 'disabled',
+      });
     }
     await page.getByRole('combobox', { name: 'Search Flare' }).fill('Notepad');
     await page.getByRole('option').first().waitFor({ timeout: 30000 });
@@ -64,12 +62,10 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await page.screenshot({ path: path.join(directory, '03-settings-light.png') });
     await audit('settings-light');
     if (process.env.FLARE_PUBLIC_SHOTS)
-      await page
-        .locator('.launcher')
-        .screenshot({
-          path: path.resolve('docs/images/settings-light.png'),
-          animations: 'disabled',
-        });
+      await page.locator('.launcher').screenshot({
+        path: path.resolve('docs/images/settings-light.png'),
+        animations: 'disabled',
+      });
     await page.getByRole('button', { name: 'Close settings' }).click();
     await page.getByRole('button', { name: 'File tools', exact: true }).click();
     await page.getByText('Images to PDF', { exact: true }).click();
@@ -196,6 +192,7 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await page.screenshot({ path: path.join(directory, 'failure.png') });
     console.log(await page.locator('body').innerText());
     console.log(await page.evaluate(() => window.flare.call('snapshot')));
+    console.log(await page.evaluate(() => window.flare.call('search', { query: 'studio-sample' })));
     throw error;
   } finally {
     await instance.close();
