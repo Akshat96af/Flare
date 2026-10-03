@@ -1,0 +1,31 @@
+# Local planning, prompts, research, and private assets
+Files/private/
+
+# Local dependencies and build output
+node_modules/
+dist/
+build/
+target/
+.turbo/
+.vite/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs and local caches
+*.log
+.cache/
+coverage/
+release/
+playwright-report/
+test-results/
