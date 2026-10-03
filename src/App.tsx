@@ -32,6 +32,7 @@ import type { Result, Settings as Prefs, IndexStatus, Operation } from './types'
 import Settings from './Settings';
 import Tools, { Plan } from './Tools';
 import Voice from './Voice';
+import GlassRail from './GlassRail';
 
 const icons: Record<string, any> = {
   app: AppWindow,
@@ -121,6 +122,7 @@ export default function App() {
   useEffect(() => {
     const isDark = settings?.theme === 'dark' || (settings?.theme === 'system' && dark);
     document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+    document.documentElement.dataset.glass = settings?.glass === false ? 'off' : 'on';
   }, [settings, dark]);
   useEffect(() => {
     if (!panel.current) return;
@@ -314,7 +316,7 @@ export default function App() {
     <main className="workspace" onKeyDown={keyDown}>
       <div ref={panel} className={'launcher ' + (view === 'voice' ? 'voice-active' : '')}>
         <div className="input-rail" style={{ transform: `scaleX(${hold || 0})` }} />
-        <div className="search-bar">
+        <GlassRail enabled={settings?.glass !== false}>
           <div className="brand-mark">
             <Zap size={23} strokeWidth={1.8} />
           </div>
@@ -371,7 +373,7 @@ export default function App() {
           >
             <Settings2 size={19} />
           </button>
-        </div>
+        </GlassRail>
         {view === 'search' && query && (
           <div className="search-content">
             <div className="result-toolbar">
@@ -394,9 +396,21 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              <span className="result-count">
-                {results.length ? results.length + ' results' : ''}
-              </span>
+              <div className="result-actions">
+                <span className="result-count">
+                  {results.length ? results.length + ' results' : ''}
+                </span>
+                {results[selected]?.kind === 'file' && (
+                  <button
+                    className="icon-button preview-button"
+                    title="Preview (Ctrl+Space)"
+                    aria-label={'Preview ' + results[selected].title}
+                    onClick={() => showPreview(results[selected])}
+                  >
+                    <Eye size={16} />
+                  </button>
+                )}
+              </div>
             </div>
             <div
               id="search-results"
@@ -447,16 +461,7 @@ export default function App() {
                                 ? 'Command'
                                 : item.kind}
                     </span>
-                    {i === selected && item.kind === 'file' ? (
-                      <button
-                        className="icon-button preview-button"
-                        title="Preview (Ctrl+Space)"
-                        aria-label={'Preview ' + item.title}
-                        onClick={() => showPreview(item)}
-                      >
-                        <Eye size={16} />
-                      </button>
-                    ) : i === selected ? (
+                    {i === selected ? (
                       <CornerDownLeft className="result-enter" size={15} />
                     ) : (
                       <span className="result-spacer" />

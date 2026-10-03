@@ -4,6 +4,7 @@ const { DatabaseSync } = require('node:sqlite');
 
 const defaults = {
   theme: 'system',
+  glass: true,
   shortcut: 'Alt+Space',
   voiceMode: 'auto',
   startup: false,

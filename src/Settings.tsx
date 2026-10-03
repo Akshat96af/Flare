@@ -135,6 +135,13 @@ export default function Settings({
               <span>Make yourself at home.</span>
             </div>
             <div className="segmented">
+              <span
+                className="glass-selection"
+                aria-hidden="true"
+                style={{
+                  transform: `translateX(${Math.max(0, ['system', 'light', 'dark'].indexOf(value.theme)) * 37}px)`,
+                }}
+              />
               {[
                 ['system', Monitor],
                 ['light', Sun],
@@ -143,6 +150,7 @@ export default function Settings({
                 <button
                   key={theme}
                   data-active={value.theme === theme}
+                  aria-pressed={value.theme === theme}
                   title={theme}
                   aria-label={theme + ' theme'}
                   onClick={() => save({ theme })}
@@ -151,6 +159,16 @@ export default function Settings({
                 </button>
               ))}
             </div>
+          </div>
+          <div className="setting-row">
+            <div>
+              <label>Liquid glass</label>
+            </div>
+            <Toggle
+              label="Liquid glass"
+              checked={value.glass}
+              onChange={() => save({ glass: !value.glass })}
+            />
           </div>
           <div className="setting-row">
             <div>

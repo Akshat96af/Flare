@@ -12,6 +12,7 @@ export type Result = {
 };
 export type Settings = {
   theme: string;
+  glass: boolean;
   shortcut: string;
   voiceMode: string;
   startup: boolean;

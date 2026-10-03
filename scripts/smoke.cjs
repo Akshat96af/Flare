@@ -29,6 +29,12 @@ const AxeBuilder = require('@axe-core/playwright').default;
       timeout: 60000,
     });
     const audit = async (name) => {
+      await page.evaluate(async () => {
+        const finite = document
+          .getAnimations()
+          .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity);
+        await Promise.all(finite.map((animation) => animation.finished.catch(() => {})));
+      });
       const result = await new AxeBuilder({ page })
         .setLegacyMode(true)
         .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
@@ -40,6 +46,22 @@ const AxeBuilder = require('@axe-core/playwright').default;
       });
     };
     await audit('empty');
+    assert.equal(await page.locator('html').getAttribute('data-glass'), 'on');
+    const rail = await page.locator('.search-bar').boundingBox();
+    await page.mouse.move(rail.x + 80, rail.y + rail.height / 2);
+    await page.waitForFunction(
+      () => Number(getComputedStyle(document.querySelector('.glass-sheen')).opacity) === 1,
+    );
+    const firstHighlight = await page
+      .locator('.glass-sheen')
+      .evaluate((node) => node.style.transform);
+    await page.mouse.move(rail.x + rail.width - 80, rail.y + rail.height / 2);
+    await page.waitForFunction(
+      (previous) => document.querySelector('.glass-sheen').style.transform !== previous,
+      firstHighlight,
+    );
+    await page.screenshot({ path: path.join(directory, '00-glass-reflection.png') });
+    await page.mouse.move(0, 0);
     await page.screenshot({ path: path.join(directory, '01-empty-dark.png') });
     if (process.env.FLARE_PUBLIC_SHOTS) {
       await fs.mkdir(path.resolve('docs/images'), { recursive: true });
@@ -59,6 +81,17 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await audit('search-dark');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('button', { name: 'light theme' }).click();
+    assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
+    await page.getByRole('switch', { name: 'Liquid glass' }).click();
+    await page.waitForFunction(() => document.documentElement.dataset.glass === 'off');
+    assert.equal(
+      await page.evaluate(async () => (await window.flare.call('snapshot')).settings.glass),
+      false,
+    );
+    await audit('settings-solid');
+    await page.screenshot({ path: path.join(directory, '03-settings-solid.png') });
+    await page.getByRole('switch', { name: 'Liquid glass' }).click();
+    await page.waitForFunction(() => document.documentElement.dataset.glass === 'on');
     await page.screenshot({ path: path.join(directory, '03-settings-light.png') });
     await audit('settings-light');
     if (process.env.FLARE_PUBLIC_SHOTS)

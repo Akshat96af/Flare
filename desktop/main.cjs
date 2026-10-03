@@ -297,7 +297,15 @@ async function saveSettings(patch) {
       if (!values.includes(patch[key])) throw new Error('Invalid setting.');
       next[key] = patch[key];
     }
-  for (const key of ['startup', 'clipboard', 'developer', 'content', 'setup', 'confirmConversions'])
+  for (const key of [
+    'startup',
+    'clipboard',
+    'developer',
+    'content',
+    'setup',
+    'confirmConversions',
+    'glass',
+  ])
     if (patch[key] !== undefined) {
       if (typeof patch[key] !== 'boolean') throw new Error('Invalid setting.');
       next[key] = patch[key];

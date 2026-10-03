@@ -1,6 +1,7 @@
 import type { Bridge, Settings } from './types';
 const defaultSettings: Settings = {
   theme: 'system',
+  glass: true,
   shortcut: 'Alt+Space',
   voiceMode: 'auto',
   startup: false,

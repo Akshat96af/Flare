@@ -201,7 +201,7 @@ export default function Voice({
           <X size={17} />
         </button>
       </div>
-      <div className="voice-visual" aria-hidden="true">
+      <div className="voice-visual" data-state={state} aria-hidden="true">
         <div className="voice-core">
           {processing ? <LoaderCircle className="spin" size={24} /> : <Mic size={24} />}
         </div>
