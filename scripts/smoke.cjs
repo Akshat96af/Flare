@@ -48,14 +48,17 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await audit('empty');
     assert.equal(await page.locator('html').getAttribute('data-glass'), 'on');
     const rail = await page.locator('.search-bar').boundingBox();
-    await page.mouse.move(rail.x + 80, rail.y + rail.height / 2);
+    await page.mouse.move(0, 0);
+    await page.mouse.move(rail.x + 80, rail.y + rail.height / 2, { steps: 5 });
     await page.waitForFunction(
-      () => Number(getComputedStyle(document.querySelector('.glass-sheen')).opacity) === 1,
+      () =>
+        Number(getComputedStyle(document.querySelector('.glass-sheen')).opacity) === 1 &&
+        document.querySelector('.glass-sheen').style.transform !== '',
     );
     const firstHighlight = await page
       .locator('.glass-sheen')
       .evaluate((node) => node.style.transform);
-    await page.mouse.move(rail.x + rail.width - 80, rail.y + rail.height / 2);
+    await page.mouse.move(rail.x + rail.width - 80, rail.y + rail.height / 2, { steps: 5 });
     await page.waitForFunction(
       (previous) => document.querySelector('.glass-sheen').style.transform !== previous,
       firstHighlight,
@@ -79,6 +82,58 @@ const AxeBuilder = require('@axe-core/playwright').default;
       'Actual Start Menu app result',
     );
     await audit('search-dark');
+    const selection = await page.locator('.result.is-selected').boundingBox();
+    const textColors = await page.locator('.result.is-selected').evaluate((node) =>
+      ['.result-title', '.result-detail', '.result-kind'].map((selector) => ({
+        selector,
+        color: getComputedStyle(node.querySelector(selector))
+          .color.match(/[\d.]+/g)
+          .slice(0, 3)
+          .map(Number),
+      })),
+    );
+    const pixels = await require('sharp')(
+      await page.screenshot({ omitBackground: true, scale: 'css' }),
+    )
+      .flatten({ background: '#fff' })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const backgrounds = [
+      [selection.x + 4, selection.y + 9],
+      [selection.x + selection.width - 4, selection.y + 9],
+      [selection.x + 4, selection.y + selection.height - 9],
+      [selection.x + selection.width - 4, selection.y + selection.height - 9],
+    ].map(([x, y]) => {
+      const offset = (Math.round(y) * pixels.info.width + Math.round(x)) * 3;
+      return [...pixels.data.subarray(offset, offset + 3)];
+    });
+    const luminance = (rgb) => {
+      const linear = rgb.map((value) => {
+        const s = value / 255;
+        return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+    };
+    const contrast = textColors.map(({ selector, color }) => ({
+      selector,
+      minimumRatio: Math.min(
+        ...backgrounds.map(
+          (background) =>
+            (Math.max(luminance(color), luminance(background)) + 0.05) /
+            (Math.min(luminance(color), luminance(background)) + 0.05),
+        ),
+      ),
+    }));
+    await fs.writeFile(
+      path.join(directory, 'glass-contrast.json'),
+      JSON.stringify({ backgrounds, contrast }, null, 2),
+    );
+    assert.ok(
+      contrast.every((value) => value.minimumRatio >= 4.5),
+      JSON.stringify(contrast),
+    );
+    await page.getByRole('combobox', { name: 'Search Flare' }).fill('');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('button', { name: 'light theme' }).click();
     assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
@@ -92,8 +147,18 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await page.screenshot({ path: path.join(directory, '03-settings-solid.png') });
     await page.getByRole('switch', { name: 'Liquid glass' }).click();
     await page.waitForFunction(() => document.documentElement.dataset.glass === 'on');
-    await page.screenshot({ path: path.join(directory, '03-settings-light.png') });
+    await page.locator('.settings-panel').evaluate((node) => {
+      node.scrollTop = 0;
+    });
     await audit('settings-light');
+    await page.screenshot({ path: path.join(directory, '03-settings-light.png') });
+    const headingGeometry = await page
+      .getByRole('heading', { name: 'Settings', exact: true })
+      .boundingBox();
+    assert.ok(
+      headingGeometry.y > 80 && headingGeometry.x > 0,
+      'Settings heading is visible after glass interaction',
+    );
     if (process.env.FLARE_PUBLIC_SHOTS)
       await page.locator('.launcher').screenshot({
         path: path.resolve('docs/images/settings-light.png'),
@@ -174,6 +239,23 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await page.getByRole('button', { name: /Intelligence/ }).click();
     await audit('ai-settings');
     await page.getByRole('button', { name: 'Close settings' }).click();
+    await instance.evaluate(({ session }) => {
+      session.defaultSession.setPermissionRequestHandler((contents, permission, callback) =>
+        callback(false),
+      );
+      session.defaultSession.setPermissionCheckHandler(() => false);
+    });
+    await page.getByRole('button', { name: 'Voice command', exact: true }).click();
+    await page.locator('.voice-visual[data-state="error"]').waitFor({ timeout: 30000 });
+    await audit('voice-permission-denied');
+    await page.screenshot({ path: path.join(directory, '09-voice-denied.png') });
+    assert.equal(
+      await page
+        .locator('.voice-core')
+        .evaluate((node) => getComputedStyle(node, '::before').animationName),
+      'none',
+    );
+    await page.getByRole('button', { name: 'Cancel voice' }).click();
     await page.getByRole('combobox', { name: 'Search Flare' }).fill('');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     assert.ok(
@@ -181,12 +263,28 @@ const AxeBuilder = require('@axe-core/playwright').default;
         .locator('.launcher')
         .evaluate((node) => parseFloat(getComputedStyle(node).animationDuration) < 0.001),
     );
-    await instance.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].setSize(380, 720),
-    );
+    const resized = await instance.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window.setResizable(true);
+      window.setSize(380, 720);
+      window.setResizable(false);
+      return window.getBounds();
+    });
+    console.log('Narrow window bounds', resized);
+    await page.waitForFunction(() => innerWidth === 380);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await audit('settings-narrow');
     await page.screenshot({ path: path.join(directory, '08-narrow.png') });
+    const geometry = await page.evaluate(() => ({
+      width: innerWidth,
+      height: innerHeight,
+      scrollX,
+      heading: document.querySelector('h2').getBoundingClientRect().toJSON(),
+      panel: document.querySelector('.launcher').getBoundingClientRect().toJSON(),
+    }));
+    await fs.writeFile(path.join(directory, 'geometry.json'), JSON.stringify(geometry, null, 2));
+    assert.equal(geometry.width, 380, 'Native window stayed narrow');
+    assert.ok(geometry.heading.x >= 0 && geometry.heading.right <= geometry.width);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
       false,
@@ -224,6 +322,17 @@ const AxeBuilder = require('@axe-core/playwright').default;
     const page = await instance.firstWindow();
     await page.screenshot({ path: path.join(directory, 'failure.png') });
     console.log(await page.locator('body').innerText());
+    console.log(
+      await page.evaluate(() => ({
+        width: innerWidth,
+        height: innerHeight,
+        scrollX,
+        scrollY,
+        sheen: document.querySelector('.glass-sheen')?.getAttribute('style'),
+        search: document.querySelector('.search-bar')?.getBoundingClientRect().toJSON(),
+        heading: document.querySelector('h2')?.getBoundingClientRect().toJSON(),
+      })),
+    );
     console.log(await page.evaluate(() => window.flare.call('snapshot')));
     console.log(await page.evaluate(() => window.flare.call('search', { query: 'studio-sample' })));
     throw error;

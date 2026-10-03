@@ -22,6 +22,18 @@ async function fixture(name) {
   return fs.mkdtemp(path.join(root, name + '-'));
 }
 
+test('glass preference defaults on for older settings and persists an explicit opt-out', async () => {
+  const directory = await fixture('glass-preferences');
+  let store = createRawStore(directory);
+  store.saveSettings({ theme: 'dark' });
+  assert.equal(store.settings().glass, true);
+  store.saveSettings({ ...store.settings(), glass: false });
+  store.db.close();
+  store = createRawStore(directory);
+  assert.equal(store.settings().glass, false);
+  store.db.close();
+});
+
 test('exact match outranks learned prefixes and fuzzy names', () => {
   assert.ok(
     score('Photoshop', 'photoshop') >

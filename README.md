@@ -30,6 +30,7 @@ Use `npm run desktop:dev` for live UI development. `npm run dev` is a browser pr
 - Choose folders or connected drives in Settings before file indexing. Hidden/system files, reparse points, cloud-only files, credentials, and common caches are excluded.
 - File tools provide image/PDF conversion, image compression, organization, and older-file review. Selected-file previews, durable history, and Undo protect changes. Balanced trust may skip the extra conversion-output review, never move/cleanup approval.
 - Clipboard history starts off. Opt-in retains at most 50 text items for up to 7 days, with clear/disable controls and supported sensitive-content markers.
+- Liquid-glass edges, pointer reflections, and elastic controls work in light/dark modes. Turn glass off in Settings; reduced-motion preferences are respected.
 
 Examples: `open YouTube`, `volume max`, `brightness 50 percent`, `12 * (3 + 4)`, `find photos from June 2025`, `photos 2025-06-12`, `search drives D and E for invoice`.
 

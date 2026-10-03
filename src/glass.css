@@ -14,6 +14,10 @@
   --glass-reflection: rgba(255, 255, 255, 0.45);
   --glass-warm-edge: rgba(197, 136, 128, 0.25);
 }
+:root[data-glass='on']:not([data-theme='light']) {
+  --muted: #b2b7c0;
+  --faint: #adb3bd;
+}
 :root[data-glass='on'] .launcher {
   background: linear-gradient(145deg, var(--glass-control), transparent 40%), var(--glass-fill);
   border-color: var(--glass-edge);
@@ -44,6 +48,9 @@
   pointer-events: none;
   z-index: 3;
 }
+:root[data-environment='desktop'][data-glass='on'] .launcher {
+  backdrop-filter: none;
+}
 :root[data-glass='on'] .search-bar {
   background: linear-gradient(180deg, var(--glass-control), transparent);
 }
@@ -57,6 +64,9 @@
   background: linear-gradient(90deg, transparent, var(--glass-control), transparent);
   opacity: 0;
   transition: opacity 180ms ease-out;
+}
+.search-bar {
+  overflow: clip;
 }
 .search-bar > :not(.glass-sheen) {
   position: relative;

@@ -141,6 +141,10 @@ export default function App() {
   }, [selected]);
   useEffect(() => {
     const id = ++sequence.current;
+    if (view !== 'search') {
+      setSearching(false);
+      return;
+    }
     if (!query.trim()) {
       setResults([]);
       setSearching(false);
@@ -170,6 +174,7 @@ export default function App() {
   }, [
     query,
     kind,
+    view,
     settings?.roots,
     settings?.content,
     settings?.clipboard,
@@ -696,7 +701,7 @@ export default function App() {
               <History size={15} />
             </button>
             <span className="footer-separator" />
-            {query && results.length ? (
+            {view === 'search' && query && results.length ? (
               <span className="key-hint">
                 <kbd>Enter</kbd> Open
               </span>
