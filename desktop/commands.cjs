@@ -36,6 +36,13 @@ function interpretLocal(input) {
 function validateIntent(intent) {
   if (!intent || typeof intent !== 'object' || Array.isArray(intent))
     throw new Error('AI did not return a valid command.');
+  if (
+    intent.kind === 'answer' &&
+    typeof intent.text === 'string' &&
+    intent.text.trim() &&
+    intent.text.length <= 6000
+  )
+    return { kind: 'answer', text: intent.text.trim() };
   if (intent.kind === 'search' && typeof intent.query === 'string' && intent.query.length <= 500)
     return { kind: 'search', query: intent.query };
   if (

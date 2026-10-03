@@ -116,11 +116,13 @@ export default function Tools({
   onPlan,
   onClose,
   autoConvert = false,
+  initialMode = 'type',
 }: {
   initial?: string;
   onPlan: (p: Operation) => void;
   onClose: () => void;
   autoConvert?: boolean;
+  initialMode?: string;
 }) {
   const [tool, setTool] = useState(initial || ''),
     [files, setFiles] = useState<string[]>([]),
@@ -129,7 +131,7 @@ export default function Tools({
     [quality, setQuality] = useState(82),
     [target, setTarget] = useState(0),
     [pages, setPages] = useState('1'),
-    [mode, setMode] = useState('type'),
+    [mode, setMode] = useState(initialMode === 'month' ? 'month' : 'type'),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const folderTool = ['organize', 'cleanup'].includes(tool);

@@ -36,7 +36,9 @@ export const bridge: Bridge = window.flare || {
     }
     if (method === 'search') return [];
     if (['history', 'drives', 'models'].includes(method)) return [];
-    if (['resize', 'hide', 'voice-cancel', 'cancel', 'clipboard-clear'].includes(method))
+    if (
+      ['resize', 'hide', 'ai-cancel', 'voice-cancel', 'cancel', 'clipboard-clear'].includes(method)
+    )
       return true;
     throw new Error('This action needs the Flare desktop app.');
   },

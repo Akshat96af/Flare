@@ -433,6 +433,28 @@ kbd {
 .empty svg {
   opacity: 0.55;
 }
+.empty .ask-ai svg {
+  opacity: 1;
+}
+.ai-answer {
+  border-top: 1px solid var(--line);
+  padding: 16px 12px 18px;
+  animation: contentIn 0.25s ease-out;
+}
+.ai-answer-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.ai-answer p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .settings-panel,
 .tools-panel,
 .plan-panel,
@@ -1032,6 +1054,7 @@ select {
 }
 .error-strip {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 8px;
   margin: 0 14px 12px;
@@ -1046,6 +1069,10 @@ select {
 }
 .error-strip > span {
   flex: 1;
+  min-width: 120px;
+}
+.error-strip > .text-button {
+  white-space: normal;
 }
 .inline-error {
   color: #d88d89;

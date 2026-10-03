@@ -6,6 +6,8 @@ Local evidence stays in ignored `Files/private/verification/`. Implementation an
 
 `npm run test:desktop` launches real Electron with isolated data. It exercises app discovery, themes, glass/solid settings, pointer reflections, conversion review/output/undo, private-location exclusions, image preview, and narrow layout. Native chooser responses are replaced with generated fixture paths; file processing/indexing/IPC are real. Selected stable states receive axe-core WCAG A/AA scans. Passing does not establish full accessibility conformance.
 
+`npm run test:bugs` verifies one-press native Escape with populated search, focused settings and pending AI, decodes a real Windows Store-app icon and checks its pixels, and exercises Ask AI, plain-text answers, provider errors, cancellation and key isolation with mocked native HTTP. It makes no paid requests. Additional unit tests cover the two-second hold threshold/release/cancel state, Gemini pagination/model normalization, thought-part filtering, token bounds and rejected commands.
+
 The glass treatment uses static optical highlights and compositor motion. It is not desktop refraction: CSS backdrop filtering cannot sample other applications behind the native window. Native rendering disables that unnecessary blur layer. Optical surfaces use non-scrollable clipping so focus cannot shift the shell's contents.
 
 Set `FLARE_SMOKE_EXE` to an absolute packaged `Flare.exe` path to test the distributed binary in portable mode. Build checks TypeScript; `format:check` checks formatting. Runtime advisory checks use `npm audit --omit=dev`, not a full Electron/native security audit.

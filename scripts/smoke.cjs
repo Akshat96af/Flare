@@ -3,6 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const assert = require('node:assert/strict');
 const AxeBuilder = require('@axe-core/playwright').default;
+const { expect } = require('@playwright/test');
 (async () => {
   const directory = path.resolve('Files/private/verification/desktop-' + Date.now());
   await fs.mkdir(directory, { recursive: true });
@@ -25,9 +26,11 @@ const AxeBuilder = require('@axe-core/playwright').default;
     const page = await instance.firstWindow();
     page.on('pageerror', (error) => errors.push(error.message));
     await page.getByRole('combobox', { name: 'Search Flare' }).waitFor();
-    await page.waitForFunction(async () => (await window.flare.call('snapshot')).ready, {
-      timeout: 60000,
-    });
+    await expect
+      .poll(() => page.evaluate(async () => (await window.flare.call('snapshot')).ready), {
+        timeout: 60000,
+      })
+      .toBe(true);
     const audit = async (name) => {
       await page.evaluate(async () => {
         const finite = document
@@ -234,7 +237,7 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await page.getByRole('button', { name: 'File details' }).click();
     await audit('image-preview');
     await page.screenshot({ path: path.join(directory, '07-preview.png') });
-    await page.keyboard.press('Escape');
+    await page.getByTitle('Close preview', { exact: true }).click();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('button', { name: /Intelligence/ }).click();
     await audit('ai-settings');

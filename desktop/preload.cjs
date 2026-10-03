@@ -12,6 +12,7 @@ const allowed = new Set([
   'models',
   'ai-save',
   'ai-plan',
+  'ai-cancel',
   'tool-plan',
   'execute',
   'history',
@@ -37,9 +38,16 @@ contextBridge.exposeInMainWorld('flare', {
   },
   on: (event, callback) => {
     if (
-      !['activation', 'hold', 'voice', 'index', 'operation', 'theme', 'model-download'].includes(
-        event,
-      )
+      ![
+        'activation',
+        'dismiss',
+        'hold',
+        'voice',
+        'index',
+        'operation',
+        'theme',
+        'model-download',
+      ].includes(event)
     )
       throw new Error('Unsupported event.');
     const handler = (_event, data) => callback(data);

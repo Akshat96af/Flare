@@ -25,8 +25,8 @@ Use `npm run desktop:dev` for live UI development. `npm run dev` is a browser pr
 
 ## Use
 
-- Tap `Alt+Space` to open; hold for 3 seconds for English voice. Silence-stop is the default; push-to-talk is available.
-- Search apps, files, folders, bookmarks, Windows settings, or calculations. Arrows/Enter navigate; `Ctrl+Space` previews; Escape steps back/hides.
+- Tap `Alt+Space` to open; hold for 2 seconds for English voice. Silence-stop is the default; push-to-talk is available.
+- Search apps, files, folders, bookmarks, Windows settings, or calculations. Arrows/Enter navigate; `Ctrl+Space` previews; Escape immediately hides Flare from any panel and cancels microphone/AI input, not ongoing file operations.
 - Choose folders or connected drives in Settings before file indexing. Hidden/system files, reparse points, cloud-only files, credentials, and common caches are excluded.
 - File tools provide image/PDF conversion, image compression, organization, and older-file review. Selected-file previews, durable history, and Undo protect changes. Balanced trust may skip the extra conversion-output review, never move/cleanup approval.
 - Clipboard history starts off. Opt-in retains at most 50 text items for up to 7 days, with clear/disable controls and supported sensitive-content markers.
@@ -37,6 +37,8 @@ Examples: `open YouTube`, `volume max`, `brightness 50 percent`, `12 * (3 + 4)`,
 ## Intelligence
 
 Connect Gemini, OpenAI, Anthropic, or local Ollama in Settings. API keys use Windows-backed Electron safeStorage and are never returned to the UI. Online interpretation shares command text, not indexed document contents. File tools still use locally selected files/folders.
+
+When no local result matches, enabled Intelligence offers **Ask AI**. Answers are plain text; AI cannot see your indexed files or invent file changes. Checking a connection only validates model discovery, not generation quota or availability. A generation error links back to Intelligence so you can choose another text model. Flare never automatically retries billable requests.
 
 ChatGPT/Claude/Gemini consumer subscriptions are not assumed to include API credits. Online voice fallback is separately opt-in and sends recorded audio to an OpenAI/Gemini provider. Local English recognition uses Windows speech; an English speech pack is required.
 
@@ -55,6 +57,7 @@ Recovery does not expire automatically. Undo skips later edits and occupied orig
 ```powershell
 npm test
 npm run test:desktop
+npm run test:bugs
 npm run format:check
 npm run package
 ```

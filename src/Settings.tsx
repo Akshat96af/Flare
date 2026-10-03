@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { bridge, desktop, basename } from './bridge';
 import type { Settings as Prefs, IndexStatus } from './types';
+const geminiModels = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash'];
 function Toggle({
   checked,
   onChange,
@@ -46,13 +47,15 @@ export default function Settings({
   index,
   onChange,
   onClose,
+  initialPage = 'general',
 }: {
   value: Prefs;
   index: IndexStatus;
   onChange: (v: Prefs) => void;
   onClose: () => void;
+  initialPage?: string;
 }) {
-  const [page, setPage] = useState('general'),
+  const [page, setPage] = useState(initialPage),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [shortcut, setShortcut] = useState(value.shortcut);
@@ -74,6 +77,12 @@ export default function Settings({
         .catch(() => {});
   }, [provider]);
   useEffect(() => bridge.on('model-download', setDownload), []);
+  const modelOptions = [
+    ...new Set([
+      ...(models.length ? models : provider === 'gemini' ? geminiModels : []),
+      ...(model ? [model] : []),
+    ]),
+  ];
   const run = async (task: () => Promise<any>) => {
     setBusy(true);
     setError('');
@@ -88,10 +97,18 @@ export default function Settings({
   const save = (patch: any) => run(async () => onChange(await bridge.call('settings', patch)));
   const checkModels = () =>
     run(async () => {
+      setConnected('');
+      setModels([]);
       const list = await bridge.call('models', { provider, key });
       setModels(list);
-      setModel(list.includes(model) ? model : list[0] || '');
-      setConnected(list.length ? 'Connection ready' : 'No installed models found.');
+      setModel(
+        list.includes(model)
+          ? model
+          : provider === 'gemini' && list.includes(geminiModels[0])
+            ? geminiModels[0]
+            : list[0] || '',
+      );
+      setConnected(list.length ? 'Key accepted' : 'No compatible models found.');
     });
   const addFolder = () =>
     run(async () => {
@@ -191,7 +208,7 @@ export default function Settings({
           <div className="setting-row">
             <div>
               <label>Voice mode</label>
-              <span>Hold your shortcut for 3 seconds.</span>
+              <span>Hold your shortcut for 2 seconds.</span>
             </div>
             <select
               aria-label="Voice mode"
@@ -369,12 +386,17 @@ export default function Settings({
           <label className="field-label">
             Use a model
             <select
+              aria-label="Use a model"
+              disabled={busy || downloading}
               value={provider}
               onChange={(e) => {
                 setProvider(e.target.value);
                 setModels([]);
-                setModel('');
+                setModel(e.target.value === 'gemini' ? geminiModels[0] : '');
                 setConnected('');
+                setKey('');
+                setSpeech(false);
+                setError('');
               }}
             >
               <option value="off">Keep AI off</option>
@@ -390,11 +412,17 @@ export default function Settings({
                 <label className="field-label">
                   API key
                   <input
+                    aria-label="API key"
+                    disabled={busy}
                     type="password"
                     autoComplete="off"
                     value={key}
                     placeholder="Enter a key, or keep your saved key"
-                    onChange={(e) => setKey(e.target.value)}
+                    onChange={(e) => {
+                      setKey(e.target.value);
+                      setConnected('');
+                      setModels([]);
+                    }}
                   />
                   <small>Encrypted on this computer. API usage is billed by your provider.</small>
                 </label>
@@ -478,20 +506,35 @@ export default function Settings({
               </div>
               <label className="field-label">
                 Model
-                {models.length ? (
-                  <select value={model} onChange={(e) => setModel(e.target.value)}>
-                    {models.map((x) => (
-                      <option key={x}>{x}</option>
-                    ))}
-                  </select>
-                ) : (
+                <select
+                  aria-label="Model"
+                  disabled={busy || !modelOptions.length}
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                >
+                  {!model && (
+                    <option value="" disabled>
+                      Select a model
+                    </option>
+                  )}
+                  {modelOptions.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {value.developer && (
+                <label className="field-label">
+                  Custom model ID
                   <input
+                    aria-label="Custom model ID"
+                    disabled={busy}
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
-                    placeholder="Connect to choose an available model"
                   />
-                )}
-              </label>
+                </label>
+              )}
               <div className="setting-row">
                 <div>
                   <label>Online voice fallback</label>

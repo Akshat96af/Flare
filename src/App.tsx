@@ -26,6 +26,7 @@ import {
   ShieldCheck,
   Sparkles,
   Eye,
+  Copy,
 } from 'lucide-react';
 import { bridge, desktop, basename, fileSize } from './bridge';
 import type { Result, Settings as Prefs, IndexStatus, Operation } from './types';
@@ -54,6 +55,10 @@ export default function App() {
     [kind, setKind] = useState('all'),
     [view, setView] = useState('search'),
     [tool, setTool] = useState(''),
+    [toolMode, setToolMode] = useState('type'),
+    [settingsPage, setSettingsPage] = useState('general'),
+    [aiAnswer, setAiAnswer] = useState(''),
+    [aiBusy, setAiBusy] = useState(false),
     [preview, setPreview] = useState<any>(null),
     [metadata, setMetadata] = useState(false),
     [hold, setHold] = useState(0),
@@ -68,6 +73,8 @@ export default function App() {
   const input = useRef<HTMLInputElement>(null),
     panel = useRef<HTMLDivElement>(null),
     sequence = useRef(0),
+    aiSequence = useRef(0),
+    aiPending = useRef(false),
     viewRef = useRef(view),
     busyRef = useRef(busy);
   viewRef.current = view;
@@ -95,6 +102,8 @@ export default function App() {
           setPreview(null);
           setResults([]);
           setError('');
+          setAiAnswer('');
+          setSettingsPage('general');
         }
         if (!matchMedia('(prefers-reduced-motion: reduce)').matches)
           panel.current?.animate(
@@ -105,6 +114,13 @@ export default function App() {
             { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' },
           );
         input.current?.focus();
+      }),
+      bridge.on('dismiss', () => {
+        aiSequence.current++;
+        aiPending.current = false;
+        setAiBusy(false);
+        setHold(0);
+        if (viewRef.current === 'voice') setView('search');
       }),
       bridge.on('hold', (data) => setHold(data.progress)),
       bridge.on('voice', (data) => {
@@ -119,6 +135,29 @@ export default function App() {
     ];
     return () => disposers.forEach((dispose) => dispose());
   }, []);
+  useEffect(() => {
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      bridge.call('hide').catch(() => {});
+    };
+    window.addEventListener('keydown', dismiss, true);
+    return () => window.removeEventListener('keydown', dismiss, true);
+  }, []);
+  useEffect(() => {
+    aiSequence.current++;
+    if (aiPending.current) bridge.call('ai-cancel').catch(() => {});
+    aiPending.current = false;
+    setAiBusy(false);
+    setAiAnswer('');
+  }, [query, settings?.ai.provider, settings?.ai.model]);
+  useEffect(() => {
+    if (view === 'search' || !aiPending.current) return;
+    aiSequence.current++;
+    aiPending.current = false;
+    setAiBusy(false);
+    bridge.call('ai-cancel').catch(() => {});
+  }, [view]);
   useEffect(() => {
     const isDark = settings?.theme === 'dark' || (settings?.theme === 'system' && dark);
     document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
@@ -194,24 +233,28 @@ export default function App() {
       setError((e as Error).message);
     }
   };
-  const handleIntent = (intent: any) => {
+  const handleIntent = async (intent: any) => {
     if (intent?.kind === 'tool') {
       setTool(intent.tool);
+      setToolMode(intent.mode || 'type');
       setView('tools');
     } else if (intent?.kind === 'search') {
       setView('search');
       setQuery(intent.query);
+      if (intent.query === query)
+        setNotice('Search unchanged. Check your search locations for missing files.');
+    } else if (intent?.kind === 'answer') {
+      setView('search');
+      setAiAnswer(intent.text);
     } else if (intent) {
-      act(async () => {
-        const value = await bridge.call('open', { intent });
-        setNotice(value.message || '');
-      });
+      const value = await bridge.call('open', { intent });
+      setNotice(value.message || '');
     }
   };
   const open = (item: Result) =>
     act(async () => {
       const result = await bridge.call('open', { id: item.id });
-      if (result.intent) handleIntent(result.intent);
+      if (result.intent) await handleIntent(result.intent);
       if (result.message) setNotice(result.message);
     });
   const showPreview = (item: Result) =>
@@ -267,15 +310,26 @@ export default function App() {
         setBusy(false);
       }
     });
-  const aiSearch = () =>
-    act(async () => {
-      setBusy(true);
-      try {
-        handleIntent(await bridge.call('ai-plan', { query }));
-      } finally {
-        setBusy(false);
+  const intelligenceOn = !!settings?.ai.model && settings.ai.provider !== 'off';
+  const aiSearch = async () => {
+    if (busy || aiPending.current || !query.trim() || !intelligenceOn) return;
+    const id = ++aiSequence.current;
+    aiPending.current = true;
+    setAiBusy(true);
+    setAiAnswer('');
+    setError('');
+    try {
+      const intent = await bridge.call('ai-plan', { query });
+      if (aiSequence.current === id) await handleIntent(intent);
+    } catch (e) {
+      if (aiSequence.current === id) setError((e as Error).message);
+    } finally {
+      if (aiSequence.current === id) {
+        aiPending.current = false;
+        setAiBusy(false);
       }
-    });
+    }
+  };
   const reset = () => {
     setView('search');
     setPreview(null);
@@ -283,18 +337,6 @@ export default function App() {
     setError('');
   };
   const keyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      if (busy && view === 'plan') return;
-      if (view === 'voice') {
-        bridge.call('voice-cancel');
-        reset();
-      } else if (view !== 'search' || preview) {
-        reset();
-      } else if (query) {
-        setQuery('');
-      } else bridge.call('hide');
-    }
     if (view !== 'search') return;
     if (e.ctrlKey && e.key.toLowerCase() === 'z' && !query) {
       e.preventDefault();
@@ -302,7 +344,7 @@ export default function App() {
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelected((x) => Math.min(results.length - 1, x + 1));
+      setSelected((x) => Math.max(0, Math.min(results.length - 1, x + 1)));
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
@@ -311,6 +353,9 @@ export default function App() {
     if (e.key === 'Enter' && results[selected]) {
       e.preventDefault();
       open(results[selected]);
+    } else if (e.key === 'Enter' && !searching && !results.length && intelligenceOn && !aiAnswer) {
+      e.preventDefault();
+      aiSearch();
     }
     if (e.key === ' ' && e.ctrlKey && results[selected]?.kind === 'file') {
       e.preventDefault();
@@ -346,13 +391,13 @@ export default function App() {
               if (view !== 'search') setView('search');
             }}
           />
-          {searching || busy ? (
+          {searching || busy || aiBusy ? (
             <LoaderCircle className="search-loader spin" size={17} />
-          ) : query && settings?.ai.provider !== 'off' ? (
+          ) : query && intelligenceOn ? (
             <button
               className="icon-button ai-button"
-              title="Interpret with AI"
-              aria-label="Interpret with AI"
+              title="Ask AI"
+              aria-label="Ask AI"
               onClick={aiSearch}
             >
               <Sparkles size={19} />
@@ -372,6 +417,7 @@ export default function App() {
             title="Settings"
             aria-label="Settings"
             onClick={() => {
+              setSettingsPage('general');
               setView(view === 'settings' ? 'search' : 'settings');
               setError('');
             }}
@@ -475,11 +521,43 @@ export default function App() {
                 );
               })}
             </div>
-            {!searching && !results.length && (
+            {!searching && !results.length && !aiAnswer && (
               <div className="empty">
-                <Search size={24} strokeWidth={1} />
+                {aiBusy ? (
+                  <LoaderCircle size={24} className="spin" />
+                ) : (
+                  <Search size={24} strokeWidth={1} />
+                )}
                 <span>{desktop ? 'No results' : 'No local results in browser preview'}</span>
+                {intelligenceOn && (
+                  <button className="subtle ask-ai" onClick={aiSearch} disabled={busy || aiBusy}>
+                    <Sparkles size={16} /> {aiBusy ? 'Asking AI...' : 'Ask AI'}
+                  </button>
+                )}
               </div>
+            )}
+            {aiAnswer && (
+              <section className="ai-answer" aria-label="AI answer">
+                <div className="section-heading">
+                  <span className="ai-answer-label">
+                    <Sparkles size={15} /> AI answer
+                  </span>
+                  <button
+                    className="icon-button"
+                    title="Copy answer"
+                    aria-label="Copy answer"
+                    onClick={() =>
+                      act(async () => {
+                        await navigator.clipboard.writeText(aiAnswer);
+                        setNotice('Answer copied');
+                      })
+                    }
+                  >
+                    <Copy size={15} />
+                  </button>
+                </div>
+                <p>{aiAnswer}</p>
+              </section>
             )}
             {preview && (
               <section className="preview-panel">
@@ -546,11 +624,18 @@ export default function App() {
           </div>
         )}
         {view === 'settings' && settings && (
-          <Settings value={settings} index={index} onChange={setSettings} onClose={reset} />
+          <Settings
+            value={settings}
+            index={index}
+            initialPage={settingsPage}
+            onChange={setSettings}
+            onClose={reset}
+          />
         )}
         {view === 'tools' && (
           <Tools
             initial={tool}
+            initialMode={toolMode}
             autoConvert={!!autoConvert}
             onClose={reset}
             onPlan={(value) => {
@@ -650,6 +735,18 @@ export default function App() {
         {error && (
           <div className="error-strip" role="alert">
             <span>{error}</span>
+            {error.includes('AI provider') && (
+              <button
+                className="text-button"
+                onClick={() => {
+                  setSettingsPage('ai');
+                  setView('settings');
+                  setError('');
+                }}
+              >
+                Intelligence settings
+              </button>
+            )}
             <button className="icon-button" title="Dismiss error" onClick={() => setError('')}>
               <X size={14} />
             </button>
@@ -669,7 +766,10 @@ export default function App() {
             <button
               className="status-label"
               title={index.current || 'Search status'}
-              onClick={() => setView('settings')}
+              onClick={() => {
+                setSettingsPage('general');
+                setView('settings');
+              }}
             >
               {shortcutError
                 ? 'Shortcut conflict'

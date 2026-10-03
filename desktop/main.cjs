@@ -24,6 +24,7 @@ const { Operations } = require('./operations.cjs');
 const { interpretLocal } = require('./commands.cjs');
 const { chordHeld, foregroundBounds, powershell, scriptPath } = require('./native.cjs');
 const ai = require('./ai.cjs');
+const { createHold } = require('./shortcut.cjs');
 
 const isolated = process.env.FLARE_DATA_DIR;
 const portable = process.argv.includes('--portable') || !!process.env.PORTABLE_EXECUTABLE_DIR;
@@ -41,6 +42,7 @@ let win,
   operations,
   voice,
   holding,
+  aiRequest,
   shortcutError = '',
   quitting = false,
   conversionWorker,
@@ -87,38 +89,36 @@ function show() {
 function register(shortcut) {
   globalShortcut.unregisterAll();
   if (holding) {
-    clearInterval(holding);
+    clearInterval(holding.timer);
     holding = null;
   }
-  let latch = false;
   const ok = globalShortcut.register(shortcut, () => {
-    if (latch) return;
-    latch = true;
+    if (holding) return;
     show();
     const start = Date.now();
-    let listening = false;
-    holding = setInterval(() => {
-      const held = chordHeld(shortcut),
-        elapsed = Date.now() - start;
-      if (!held) {
-        clearInterval(holding);
-        holding = null;
-        latch = false;
-        send('hold', { progress: 0 });
-        if (listening && store.settings().voiceMode === 'push') send('voice', { action: 'stop' });
-        return;
-      }
-      if (!listening) {
-        send('hold', { progress: Math.min(1, elapsed / 3000) });
-        if (elapsed >= 3000) {
-          listening = true;
-          send('voice', { action: 'start' });
+    const hold = createHold(store.settings().voiceMode);
+    holding = {
+      hold,
+      timer: setInterval(() => {
+        for (const event of hold.advance(chordHeld(shortcut), Date.now() - start))
+          send(event.event, event.data);
+        if (hold.done) {
+          clearInterval(holding.timer);
+          holding = null;
         }
-      }
-    }, 40);
+      }, 40),
+    };
   });
   shortcutError = ok ? '' : 'Shortcut is already in use. Choose another in Settings.';
   return ok;
+}
+function hideLauncher() {
+  holding?.hold.cancel();
+  send('hold', { progress: 0 });
+  stopVoice(true);
+  aiRequest?.abort();
+  send('dismiss', {});
+  win.hide();
 }
 function stopVoice(cancel = false) {
   if (!voice) return;
@@ -255,13 +255,33 @@ async function query(q, kind) {
       detail: intent.kind === 'calculator' ? 'Calculator' : 'Built-in command',
       intent,
     });
+  const results = list.slice(0, 30);
+  const missing = [
+    ...new Set(results.filter((x) => x.kind === 'app' && !icons.has(x.path)).map((x) => x.path)),
+  ];
+  if (missing.length) {
+    const pending = (async () => {
+      const found = await powershell('app-icons', { paths: missing }).catch(() => []);
+      return new Map(
+        found
+          .filter((x) => x.icon?.startsWith('data:image/png;base64,'))
+          .map((x) => [x.path, x.icon]),
+      );
+    })();
+    for (const file of missing)
+      icons.set(
+        file,
+        pending.then((found) => found.get(file) || ''),
+      );
+    while (icons.size > 512) icons.delete(icons.keys().next().value);
+  }
   return Promise.all(
-    list.slice(0, 30).map(async (item) => {
-      if (item.kind === 'app' && !item.path.startsWith('shell:')) {
+    results.map(async (item) => {
+      if (item.kind === 'app') {
         try {
-          if (!icons.has(item.path))
-            icons.set(item.path, (await app.getFileIcon(item.path, { size: 'small' })).toDataURL());
-          item.icon = icons.get(item.path);
+          item.icon = await icons.get(item.path);
+          if (!item.icon && !item.path.startsWith('shell:'))
+            item.icon = (await app.getFileIcon(item.path, { size: 'normal' })).toDataURL();
         } catch {}
       }
       return item;
@@ -279,7 +299,7 @@ async function executeIntent(intent) {
   }
   if (intent.kind === 'website') {
     await shell.openExternal(intent.url);
-    win.hide();
+    hideLauncher();
     return { message: 'Opened ' + intent.title };
   }
   return { intent };
@@ -416,7 +436,7 @@ async function dispatch(method, data = {}) {
         const error = await shell.openPath(item.path);
         if (error) throw new Error(error);
       }
-      win.hide();
+      hideLauncher();
       return { message: 'Opened ' + item.title };
     }
     case 'preview':
@@ -457,20 +477,39 @@ async function dispatch(method, data = {}) {
         data.model.length > 150
       )
         throw new Error('Choose a valid provider and model.');
-      if (data.key) {
+      const model = data.provider === 'off' ? '' : ai.normalizeModel(data.provider, data.model);
+      const key =
+        data.provider === 'off' || data.provider === 'local'
+          ? ''
+          : ai.credentials(data.provider, data.key?.trim() || secret(data.provider));
+      if (data.key && key) {
         if (!safeStorage.isEncryptionAvailable())
           throw new Error('Windows credential encryption is unavailable.');
-        store.set('key:' + data.provider, safeStorage.encryptString(data.key).toString('base64'));
+        store.set('key:' + data.provider, safeStorage.encryptString(key).toString('base64'));
       }
       const prefs = store.settings();
-      prefs.ai = { provider: data.provider, model: data.model, speechCloud: !!data.speechCloud };
+      prefs.ai = {
+        provider: data.provider,
+        model,
+        speechCloud: ['gemini', 'openai'].includes(data.provider) && !!data.speechCloud,
+      };
       store.saveSettings(prefs);
       return prefs;
     }
     case 'ai-plan': {
       const settings = store.settings().ai;
-      return ai.plan(data.query, settings, secret(settings.provider));
+      aiRequest?.abort();
+      const controller = new AbortController();
+      aiRequest = controller;
+      try {
+        return await ai.plan(data.query, settings, secret(settings.provider), controller.signal);
+      } finally {
+        if (aiRequest === controller) aiRequest = null;
+      }
     }
+    case 'ai-cancel':
+      aiRequest?.abort();
+      return true;
     case 'tool-plan': {
       if (['organize', 'cleanup'].includes(data.tool)) {
         if (!granted.has(data.folder)) throw new Error('Choose a folder first.');
@@ -544,8 +583,7 @@ async function dispatch(method, data = {}) {
         secret(store.settings().ai.provider),
       );
     case 'hide':
-      stopVoice(true);
-      win.hide();
+      hideLauncher();
       return true;
     case 'resize': {
       const work = screen.getDisplayMatching(win.getBounds()).workArea;
@@ -591,6 +629,12 @@ app
       },
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.webContents.on('before-input-event', (event, input) => {
+      if (input.type === 'keyDown' && input.key === 'Escape') {
+        event.preventDefault();
+        hideLauncher();
+      }
+    });
     win.webContents.on('will-navigate', (event) => event.preventDefault());
     session.defaultSession.setPermissionRequestHandler((contents, permission, callback) =>
       callback(contents === win.webContents && permission === 'media'),
@@ -635,7 +679,7 @@ app
     win.on('close', (event) => {
       if (!quitting) {
         event.preventDefault();
-        win.hide();
+        hideLauncher();
       }
     });
     nativeTheme.on('updated', () => send('theme', { dark: nativeTheme.shouldUseDarkColors }));
@@ -677,10 +721,11 @@ app
     app.on('before-quit', () => {
       quitting = true;
       stopVoice(true);
+      aiRequest?.abort();
       search.close();
       require('./local-model.cjs').cancel();
       conversionWorker?.terminate();
-      if (holding) clearInterval(holding);
+      if (holding) clearInterval(holding.timer);
       clearInterval(clipboardTimer);
       clearInterval(rescan);
       globalShortcut.unregisterAll();

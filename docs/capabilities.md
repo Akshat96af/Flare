@@ -3,7 +3,7 @@
 | Area | Implemented | Limits |
 | --- | --- | --- |
 | Launcher | Global shortcut/hold detection, tray, single instance, light/dark/system | Physical release ordering and mixed-DPI need manual checks |
-| Apps | Start Menu shortcuts and Windows Store IDs | Some app icons use a generic fallback |
+| Apps | Start Menu shortcuts, Windows Store IDs and Shell icons | Generic icon fallback if Windows cannot resolve an icon |
 | Files/folders | Selected locations, SQLite, exact/fuzzy ranking, usage learning | No elevation; network shares not validated |
 | Windows Search | Scoped filename fallback | Depends on Windows service and existing coverage |
 | Changes | Watcher-triggered scans reuse unchanged extraction; 10-minute fallback | Not a USN-journal index; metadata is rescanned |
@@ -12,7 +12,7 @@
 | Bookmarks | Read-only Chrome/Edge Default/Profile N | No Firefox, browser sync, or live watcher |
 | Clipboard | Opt-in, 50 text items/7 days, clear/disable | Database not encrypted; no perfect secret detection |
 | Voice | English Windows speech, amplitude animation, transcript review, silence/push modes | Speech pack and microphone required; not Whisper |
-| AI | BYOK model lists/commands, Ollama, typed validation | Not embeddings, file summaries, or arbitrary automation |
+| AI | BYOK text-model discovery, safe commands/answers, empty-search Ask AI, Ollama | No indexed file access, embeddings, file summaries, or arbitrary automation; discovery does not guarantee generation access |
 | Local setup | Official installer link, model detection, approved download with progress/cancel | Installation user-managed; canceled chunks may remain |
 | System | Default output volume and laptop brightness | No DDC/CI external-monitor control |
 | Organization | Chosen folder's immediate regular files by type/month | 500 candidates; no recursive AI renames |
