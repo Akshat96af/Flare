@@ -329,6 +329,25 @@ test('background query worker returns ranked local results', async () => {
     store.close();
   }
 });
+
+test('an interrupted search rejects pending work and recovers with a new worker', async () => {
+  const dir = await fixture('query-recovery'),
+    store = createStore(dir);
+  const search = new Search(store, () => {});
+  search.put({ id: 'app:recovery', title: 'Recovery', path: 'fixture', kind: 'app' });
+  try {
+    const pending = search.queryAsync('recovery', 'all');
+    const rejected = assert.rejects(pending, /Search restarted/);
+    await search.queryWorker.terminate();
+    await rejected;
+    assert.equal(search.requests.size, 0);
+    assert.equal(search.queryWorker, null);
+    assert.equal((await search.queryAsync('recovery', 'all'))[0].title, 'Recovery');
+  } finally {
+    search.close();
+    store.close();
+  }
+});
 test('background query sees updated locations and newly indexed files', async () => {
   const dir = await fixture('worker-refresh'),
     store = createStore(path.join(dir, 'state')),

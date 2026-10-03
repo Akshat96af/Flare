@@ -34,6 +34,7 @@ import Settings from './Settings';
 import Tools, { Plan } from './Tools';
 import Voice from './Voice';
 import GlassRail from './GlassRail';
+import { usePressFeedback } from './usePressFeedback';
 
 const icons: Record<string, any> = {
   app: AppWindow,
@@ -50,7 +51,8 @@ export default function App() {
     [index, setIndex] = useState<IndexStatus>({ state: 'idle', count: 0, current: '' }),
     [dark, setDark] = useState(true),
     [query, setQuery] = useState(''),
-    [results, setResults] = useState<Result[]>([]),
+    [searchResults, setResults] = useState<Result[]>([]),
+    [resultContext, setResultContext] = useState(''),
     [selected, setSelected] = useState(0),
     [kind, setKind] = useState('all'),
     [view, setView] = useState('search'),
@@ -60,13 +62,14 @@ export default function App() {
     [aiAnswer, setAiAnswer] = useState(''),
     [aiBusy, setAiBusy] = useState(false),
     [preview, setPreview] = useState<any>(null),
+    [previewBusy, setPreviewBusy] = useState(false),
     [metadata, setMetadata] = useState(false),
     [hold, setHold] = useState(0),
     [stopSignal, setStopSignal] = useState(0),
     [history, setHistory] = useState<Operation[]>([]),
     [plan, setPlan] = useState<Operation | null>(null),
     [busy, setBusy] = useState(false),
-    [searching, setSearching] = useState(false),
+    [searchPending, setSearching] = useState(false),
     [notice, setNotice] = useState(''),
     [error, setError] = useState(''),
     [shortcutError, setShortcutError] = useState('');
@@ -75,8 +78,15 @@ export default function App() {
     sequence = useRef(0),
     aiSequence = useRef(0),
     aiPending = useRef(false),
+    previewSequence = useRef(0),
+    entrance = useRef<Animation | null>(null),
     viewRef = useRef(view),
     busyRef = useRef(busy);
+  const searchContext = query + '\0' + kind;
+  const results = resultContext === searchContext ? searchResults : [];
+  const searching =
+    view === 'search' && !!query.trim() && (searchPending || resultContext !== searchContext);
+  usePressFeedback(panel);
   viewRef.current = view;
   busyRef.current = busy;
   useEffect(() => {
@@ -105,17 +115,24 @@ export default function App() {
           setAiAnswer('');
           setSettingsPage('general');
         }
+        entrance.current?.cancel();
         if (!matchMedia('(prefers-reduced-motion: reduce)').matches)
-          panel.current?.animate(
-            [
-              { opacity: 0, transform: 'translateY(-8px) scale(.985)' },
-              { opacity: 1, transform: 'translateY(0) scale(1)' },
-            ],
-            { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' },
-          );
+          entrance.current =
+            panel.current?.animate(
+              [
+                { opacity: 0, transform: 'translateY(-8px) scale(.985)' },
+                { opacity: 1, transform: 'translateY(0) scale(1)' },
+              ],
+              { duration: 220, easing: 'cubic-bezier(.23,1,.32,1)' },
+            ) || null;
         input.current?.focus();
       }),
       bridge.on('dismiss', () => {
+        sequence.current++;
+        previewSequence.current++;
+        entrance.current?.cancel();
+        setPreviewBusy(false);
+        setSearching(false);
         aiSequence.current++;
         aiPending.current = false;
         setAiBusy(false);
@@ -124,7 +141,7 @@ export default function App() {
       }),
       bridge.on('hold', (data) => setHold(data.progress)),
       bridge.on('voice', (data) => {
-        if (data.action === 'start') setView('voice');
+        if (data.action === 'start' && !busyRef.current) setView('voice');
         else setStopSignal((x) => x + 1);
       }),
       bridge.on('index', setIndex),
@@ -133,7 +150,10 @@ export default function App() {
         setPlan((current) => (current?.id === data.id ? data : current)),
       ),
     ];
-    return () => disposers.forEach((dispose) => dispose());
+    return () => {
+      disposers.forEach((dispose) => dispose());
+      entrance.current?.cancel();
+    };
   }, []);
   useEffect(() => {
     const dismiss = (event: KeyboardEvent) => {
@@ -165,13 +185,29 @@ export default function App() {
   }, [settings, dark]);
   useEffect(() => {
     if (!panel.current) return;
+    let frame = 0,
+      lastHeight = 0,
+      height = 0;
     const observer = new ResizeObserver((entries) => {
-      const height = Math.ceil(entries[0].contentRect.height) + 74;
-      bridge.call('resize', { height }).catch(() => {});
+      height = Math.ceil(entries[0].contentRect.height) + 74;
+      if (frame || height === lastHeight) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        lastHeight = height;
+        bridge.call('resize', { height }).catch(() => {});
+      });
     });
     observer.observe(panel.current);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
   }, []);
+  useEffect(() => {
+    previewSequence.current++;
+    setPreviewBusy(false);
+    setPreview(null);
+  }, [query, kind, view]);
   useEffect(() => {
     if (view === 'search') requestAnimationFrame(() => input.current?.focus());
   }, [view]);
@@ -198,6 +234,7 @@ export default function App() {
         .then((data) => {
           if (sequence.current === id) {
             setResults(data);
+            setResultContext(query + '\0' + kind);
             setSelected(0);
             setSearching(false);
           }
@@ -205,6 +242,8 @@ export default function App() {
         .catch((e) => {
           if (sequence.current === id) {
             setError(e.message);
+            setResults([]);
+            setResultContext(query + '\0' + kind);
             setSearching(false);
           }
         });
@@ -257,24 +296,32 @@ export default function App() {
       if (result.intent) await handleIntent(result.intent);
       if (result.message) setNotice(result.message);
     });
-  const showPreview = (item: Result) =>
-    act(async () => {
-      setBusy(true);
-      try {
-        setPreview(await bridge.call('preview', { id: item.id }));
-        setMetadata(false);
-      } finally {
-        setBusy(false);
-      }
-    });
-  const showHistory = () =>
-    act(async () => {
+  const showPreview = async (item: Result) => {
+    const id = ++previewSequence.current;
+    setPreviewBusy(true);
+    setError('');
+    try {
+      const value = await bridge.call('preview', { id: item.id });
+      if (id !== previewSequence.current) return;
+      setPreview(value);
+      setMetadata(false);
+    } catch (error) {
+      if (id === previewSequence.current) setError((error as Error).message);
+    } finally {
+      if (id === previewSequence.current) setPreviewBusy(false);
+    }
+  };
+  const showHistory = () => {
+    setView('history');
+    setHistory([]);
+    return act(async () => {
       setHistory(await bridge.call('history'));
-      setView('history');
     });
+  };
   const runPlan = (selection?: number[], value = plan) =>
     act(async () => {
-      if (!value) return;
+      if (!value || busyRef.current) return;
+      busyRef.current = true;
       setBusy(true);
       try {
         const result = await bridge.call('execute', { id: value.id, selection });
@@ -289,6 +336,7 @@ export default function App() {
               : 'Operation stopped.',
         );
       } finally {
+        busyRef.current = false;
         setBusy(false);
       }
     });
@@ -297,6 +345,8 @@ export default function App() {
     (settings?.trust === 'custom' && !settings.confirmConversions);
   const undo = (id?: string) =>
     act(async () => {
+      if (busyRef.current) return;
+      busyRef.current = true;
       setBusy(true);
       try {
         const result = await bridge.call('undo', { id });
@@ -307,6 +357,7 @@ export default function App() {
             : 'Some files could not be restored. Review conflicts.',
         );
       } finally {
+        busyRef.current = false;
         setBusy(false);
       }
     });
@@ -337,7 +388,7 @@ export default function App() {
     setError('');
   };
   const keyDown = (e: React.KeyboardEvent) => {
-    if (view !== 'search') return;
+    if (view !== 'search' || e.target !== input.current || e.nativeEvent.isComposing) return;
     if (e.ctrlKey && e.key.toLowerCase() === 'z' && !query) {
       e.preventDefault();
       undo();
@@ -350,7 +401,7 @@ export default function App() {
       e.preventDefault();
       setSelected((x) => Math.max(0, x - 1));
     }
-    if (e.key === 'Enter' && results[selected]) {
+    if (e.key === 'Enter' && !searching && results[selected]) {
       e.preventDefault();
       open(results[selected]);
     } else if (e.key === 'Enter' && !searching && !results.length && intelligenceOn && !aiAnswer) {
@@ -377,7 +428,7 @@ export default function App() {
             role="combobox"
             aria-label="Search Flare"
             aria-expanded={view === 'search' && results.length > 0}
-            aria-controls={view === 'search' && query ? 'search-results' : undefined}
+            aria-controls={view === 'search' && results.length ? 'search-results' : undefined}
             aria-autocomplete="list"
             aria-activedescendant={
               view === 'search' && results[selected] ? 'result-' + selected : undefined
@@ -386,27 +437,32 @@ export default function App() {
             autoComplete="off"
             placeholder="Search anything..."
             value={query}
+            readOnly={busy}
             onChange={(e) => {
               setQuery(e.target.value);
               if (view !== 'search') setView('search');
             }}
           />
-          {searching || busy || aiBusy ? (
-            <LoaderCircle className="search-loader spin" size={17} />
-          ) : query && intelligenceOn ? (
-            <button
-              className="icon-button ai-button"
-              title="Ask AI"
-              aria-label="Ask AI"
-              onClick={aiSearch}
-            >
-              <Sparkles size={19} />
-            </button>
-          ) : null}
+          <span className="search-action-slot">
+            {searching || busy || aiBusy || previewBusy ? (
+              <LoaderCircle className="search-loader spin" size={17} />
+            ) : query && intelligenceOn ? (
+              <button
+                className="icon-button ai-button"
+                title="Ask AI"
+                aria-label="Ask AI"
+                onClick={aiSearch}
+              >
+                <Sparkles size={19} />
+              </button>
+            ) : null}
+          </span>
           <button
             className={'icon-button microphone ' + (view === 'voice' ? 'active' : '')}
             title="Voice command"
             aria-label="Voice command"
+            aria-pressed={view === 'voice'}
+            disabled={busy}
             onClick={() => setView(view === 'voice' ? 'search' : 'voice')}
           >
             <Mic size={19} />
@@ -416,6 +472,8 @@ export default function App() {
             className="icon-button"
             title="Settings"
             aria-label="Settings"
+            aria-pressed={view === 'settings'}
+            disabled={busy}
             onClick={() => {
               setSettingsPage('general');
               setView(view === 'settings' ? 'search' : 'settings');
@@ -439,9 +497,32 @@ export default function App() {
                   <button
                     role="tab"
                     aria-selected={kind === value}
+                    tabIndex={kind === value ? 0 : -1}
                     className={kind === value ? 'selected' : ''}
                     key={value}
                     onClick={() => setKind(value)}
+                    onKeyDown={(event) => {
+                      const tabs = Array.from(
+                        event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>(
+                          '[role="tab"]',
+                        ),
+                      );
+                      const current = tabs.indexOf(event.currentTarget);
+                      const next =
+                        event.key === 'ArrowRight'
+                          ? (current + 1) % tabs.length
+                          : event.key === 'ArrowLeft'
+                            ? (current + tabs.length - 1) % tabs.length
+                            : event.key === 'Home'
+                              ? 0
+                              : event.key === 'End'
+                                ? tabs.length - 1
+                                : -1;
+                      if (next < 0) return;
+                      event.preventDefault();
+                      tabs[next].focus();
+                      tabs[next].click();
+                    }}
                   >
                     {label}
                   </button>
@@ -449,7 +530,9 @@ export default function App() {
               </div>
               <div className="result-actions">
                 <span className="result-count">
-                  {results.length ? results.length + ' results' : ''}
+                  {results.length
+                    ? results.length + (results.length === 1 ? ' result' : ' results')
+                    : ''}
                 </span>
                 {results[selected]?.kind === 'file' && (
                   <button
@@ -465,8 +548,8 @@ export default function App() {
             </div>
             <div
               id="search-results"
-              role="listbox"
-              aria-label="Search results"
+              role={results.length ? 'listbox' : undefined}
+              aria-label={results.length ? 'Search results' : undefined}
               className="result-list"
             >
               {results.map((item, i) => {
@@ -581,9 +664,13 @@ export default function App() {
                     <p>No visual preview for this file.</p>
                   </div>
                 )}
-                <button className="metadata-toggle" onClick={() => setMetadata(!metadata)}>
+                <button
+                  className="metadata-toggle"
+                  aria-expanded={metadata}
+                  onClick={() => setMetadata(!metadata)}
+                >
                   <span>File details</span>
-                  {metadata ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                  <ChevronDown size={15} />
                 </button>
                 {metadata && (
                   <dl className="metadata">
@@ -765,6 +852,7 @@ export default function App() {
             <span className={'status-dot ' + (index.state === 'indexing' ? 'active' : '')} />
             <button
               className="status-label"
+              disabled={busy}
               title={index.current || 'Search status'}
               onClick={() => {
                 setSettingsPage('general');
@@ -785,8 +873,11 @@ export default function App() {
               className="icon-button"
               title="File tools"
               aria-label="File tools"
+              aria-pressed={view === 'tools'}
+              disabled={busy}
               onClick={() => {
                 setTool('');
+                setToolMode('type');
                 setView(view === 'tools' ? 'search' : 'tools');
               }}
             >
@@ -796,6 +887,8 @@ export default function App() {
               className="icon-button"
               title="Activity & undo"
               aria-label="Activity and undo"
+              aria-pressed={view === 'history'}
+              disabled={busy}
               onClick={showHistory}
             >
               <History size={15} />

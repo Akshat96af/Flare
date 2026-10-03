@@ -41,6 +41,7 @@ let win,
   search,
   operations,
   voice,
+  voiceRequest,
   holding,
   aiRequest,
   shortcutError = '',
@@ -121,6 +122,7 @@ function hideLauncher() {
   win.hide();
 }
 function stopVoice(cancel = false) {
+  if (cancel) voiceRequest?.abort();
   if (!voice) return;
   if (cancel) {
     voice.kill();
@@ -150,7 +152,14 @@ function localVoice() {
       child.kill();
       reject(new Error('Voice recognition timed out.'));
     }, 35000);
-    child.stdout.on('data', (x) => (out += x));
+    let notified = false;
+    child.stdout.on('data', (x) => {
+      out += x;
+      if (!notified && out.includes('FLARE_SPEECH_READY')) {
+        notified = true;
+        send('voice-ready', {});
+      }
+    });
     child.stderr.on('data', (x) => (err += x));
     child.on('error', (e) => {
       clearTimeout(timer);
@@ -161,7 +170,7 @@ function localVoice() {
       if (voice === child) voice = null;
       if (code !== 0) return reject(new Error(err.trim().slice(0, 300) || 'Local speech stopped.'));
       try {
-        resolve(JSON.parse(out.trim()).text || '');
+        resolve(JSON.parse(out.replace('FLARE_SPEECH_READY', '').trim()).text || '');
       } catch {
         reject(new Error('Local speech returned no transcript.'));
       }
@@ -488,10 +497,16 @@ async function dispatch(method, data = {}) {
         store.set('key:' + data.provider, safeStorage.encryptString(key).toString('base64'));
       }
       const prefs = store.settings();
+      const speechMode = data.speechMode ?? 'fallback';
+      if (!['fallback', 'online'].includes(speechMode)) throw new Error('Choose a valid voice mode.');
+      const speechModel = data.speechModel ? ai.normalizeModel(data.provider, data.speechModel) : '';
+      if (data.provider === 'openai' && speechModel && !['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'].includes(speechModel)) throw new Error('Choose a supported speech model.');
       prefs.ai = {
         provider: data.provider,
         model,
         speechCloud: ['gemini', 'openai'].includes(data.provider) && !!data.speechCloud,
+        speechMode,
+        speechModel,
       };
       store.saveSettings(prefs);
       return prefs;
@@ -575,13 +590,18 @@ async function dispatch(method, data = {}) {
     case 'voice-cancel':
       stopVoice(true);
       return true;
-    case 'voice-transcribe':
-      return ai.transcribe(
+    case 'voice-transcribe': {
+      voiceRequest?.abort();
+      const controller = new AbortController();
+      voiceRequest = controller;
+      try { return await ai.transcribe(
         data.bytes,
         data.mime,
         store.settings().ai,
         secret(store.settings().ai.provider),
-      );
+        controller.signal,
+      ); } finally { if (voiceRequest === controller) voiceRequest = null; }
+    }
     case 'hide':
       hideLauncher();
       return true;
@@ -590,7 +610,8 @@ async function dispatch(method, data = {}) {
       const height = Math.round(
         Math.max(130, Math.min(Number(data.height) || 150, work.height - 140, 800)),
       );
-      win.setSize(win.getBounds().width, height);
+      const bounds = win.getBounds();
+      if (bounds.height !== height) win.setSize(bounds.width, height);
       return true;
     }
     case 'quit':

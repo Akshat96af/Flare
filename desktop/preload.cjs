@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('flare', {
         'dismiss',
         'hold',
         'voice',
+        'voice-ready',
         'index',
         'operation',
         'theme',

@@ -360,39 +360,49 @@ class Search {
   }
   queryAsync(query, kind) {
     if (!this.queryWorker) {
-      this.queryWorker = new Worker(path.join(__dirname, 'query-worker.cjs'), {
+      const worker = new Worker(path.join(__dirname, 'query-worker.cjs'), {
         workerData: { directory: this.store.directory },
         resourceLimits: { maxOldGenerationSizeMb: 192 },
       });
-      this.requests = new Map();
+      this.queryWorker = worker;
+      const requests = new Map();
+      this.requests = requests;
       this.requestId = 0;
-      this.queryWorker.on('message', (data) => {
-        const pending = this.requests.get(data.id);
-        if (pending) {
-          clearTimeout(pending.timer);
-          this.requests.delete(data.id);
-          data.error ? pending.reject(new Error(data.error)) : pending.resolve(data.results);
-        }
-      });
-      this.queryWorker.on('error', (error) => {
-        for (const pending of this.requests.values()) {
+      const fail = (error) => {
+        for (const pending of requests.values()) {
           clearTimeout(pending.timer);
           pending.reject(error);
         }
-        this.requests.clear();
+        requests.clear();
+        if (this.queryWorker === worker) this.queryWorker = null;
+      };
+      worker.on('message', (data) => {
+        const pending = requests.get(data.id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          requests.delete(data.id);
+          data.error ? pending.reject(new Error(data.error)) : pending.resolve(data.results);
+        }
       });
-      this.queryWorker.on('exit', () => {
-        this.queryWorker = null;
-      });
+      worker.on('error', fail);
+      worker.on('exit', () => fail(new Error('Search restarted. Please try again.')));
     }
+    const worker = this.queryWorker,
+      requests = this.requests;
     return new Promise((resolve, reject) => {
       const id = ++this.requestId,
         timer = setTimeout(() => {
-          this.requests.delete(id);
+          requests.delete(id);
           reject(new Error('Search took too long. Try narrowing your locations.'));
         }, 10000);
-      this.requests.set(id, { resolve, reject, timer });
-      this.queryWorker.postMessage({ id, query, kind });
+      requests.set(id, { resolve, reject, timer });
+      try {
+        worker.postMessage({ id, query, kind });
+      } catch (error) {
+        clearTimeout(timer);
+        requests.delete(id);
+        reject(error);
+      }
     });
   }
   close() {

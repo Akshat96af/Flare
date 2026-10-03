@@ -10,15 +10,16 @@ using System.Speech.Recognition;
 public static class FlareSpeech {
  public static string Listen(bool push) {
   RecognizerInfo selected=null;
-  foreach(var info in SpeechRecognitionEngine.InstalledRecognizers()) if(info.Culture.Name.StartsWith("en-")){selected=info;break;}
+  foreach(var info in SpeechRecognitionEngine.InstalledRecognizers()) if(info.Culture.Name.StartsWith("en-")){if(selected==null)selected=info;if(info.Culture.Name==System.Globalization.CultureInfo.CurrentCulture.Name){selected=info;break;}}
   if(selected==null) throw new Exception("An English Windows speech recognizer is not installed.");
   using(var engine=new SpeechRecognitionEngine(selected)) {
    string text=""; var done=new ManualResetEventSlim(false);
    engine.SetInputToDefaultAudioDevice(); engine.LoadGrammar(new DictationGrammar());
-   engine.InitialSilenceTimeout=TimeSpan.FromSeconds(8); engine.EndSilenceTimeout=TimeSpan.FromMilliseconds(1000);
-   engine.SpeechRecognized+=(s,e)=>{text+=(text.Length>0?" ":"")+e.Result.Text;};
+   engine.InitialSilenceTimeout=TimeSpan.FromSeconds(12); engine.EndSilenceTimeout=TimeSpan.FromMilliseconds(1500);
+   engine.SpeechRecognized+=(s,e)=>{if(e.Result.Confidence>=0.4)text+=(text.Length>0?" ":"")+e.Result.Text;};
    engine.RecognizeCompleted+=(s,e)=>{done.Set();};
-   engine.RecognizeAsync(push?RecognizeMode.Multiple:RecognizeMode.Single);
+   engine.RecognizeAsync(RecognizeMode.Multiple);
+   Console.Out.WriteLine("FLARE_SPEECH_READY"); Console.Out.Flush();
    var stop=Console.In.ReadLineAsync(); bool stopping=false; var start=DateTime.UtcNow;
    while(!done.IsSet && (DateTime.UtcNow-start).TotalSeconds<30) {
     if(stop.IsCompleted&&!stopping){engine.RecognizeAsyncStop();stopping=true;}

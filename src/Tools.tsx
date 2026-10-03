@@ -167,7 +167,7 @@ export default function Tools({
     }
   };
   return (
-    <section className="tools-panel">
+    <section className="tools-panel" key={tool}>
       <div className="section-heading">
         <div className="heading-group">
           {tool && (

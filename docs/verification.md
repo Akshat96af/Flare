@@ -12,6 +12,8 @@ The glass treatment uses static optical highlights and compositor motion. It is 
 
 Set `FLARE_SMOKE_EXE` to an absolute packaged `Flare.exe` path to test the distributed binary in portable mode. Build checks TypeScript; `format:check` checks formatting. Runtime advisory checks use `npm audit --omit=dev`, not a full Electron/native security audit.
 
+`npm run test:ui` uses an isolated native process with deterministic search/preview fixtures. It checks keyboard control isolation, stale-result protection, interrupted preview requests, tab navigation, click feedback, reduced motion, narrow layout, and rapid-click settling. It makes no network or generation requests. Unit tests also terminate a query worker mid-request and verify immediate rejection and recovery. Glass press effects are bounded, cancelled when interrupted, and disabled for reduced motion.
+
 ## Before Public Release
 
 - Physical tap/hold, repeat/release order, rebinding/conflicts, focus and Escape.
