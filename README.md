@@ -25,7 +25,7 @@ Use `npm run desktop:dev` for live UI development. `npm run dev` is a browser pr
 
 ## Use
 
-- Tap `Alt+Space` to open; hold for 2 seconds for English voice. Silence-stop is the default; push-to-talk is available.
+- Tap `Alt+Space` to open; hold for 1 second for English voice. Silence-stop is the default; push-to-talk is available.
 - Search apps, files, folders, bookmarks, Windows settings, or calculations. Arrows/Enter navigate; `Ctrl+Space` previews; Escape immediately hides Flare from any panel and cancels microphone/AI input, not ongoing file operations.
 - Choose folders or connected drives in Settings before file indexing. Hidden/system files, reparse points, cloud-only files, credentials, and common caches are excluded.
 - File tools provide image/PDF conversion, image compression, organization, and older-file review. Selected-file previews, durable history, and Undo protect changes. Balanced trust may skip the extra conversion-output review, never move/cleanup approval.
@@ -40,7 +40,7 @@ Connect Gemini, OpenAI, Anthropic, or local Ollama in Settings. API keys use Win
 
 When no local result matches, enabled Intelligence offers **Ask AI**. Answers are plain text; AI cannot see your indexed files or invent file changes. Checking a connection only validates model discovery, not generation quota or availability. A generation error links back to Intelligence so you can choose another text model. Flare never automatically retries billable requests.
 
-ChatGPT/Claude/Gemini consumer subscriptions are not assumed to include API credits. Online voice fallback is separately opt-in and sends recorded audio to an OpenAI/Gemini provider. Local English recognition uses Windows speech; an English speech pack is required.
+ChatGPT/Claude/Gemini consumer subscriptions are not assumed to include API credits. Voice recognition can use Windows only, Windows with online fallback, or online transcription directly. Online modes are separately opt-in and send recorded audio to the selected OpenAI/Gemini provider. Speech models are independent of the Intelligence model, including Gemini 3.5 Transcribe and GPT-4o Transcribe/Mini. Local English recognition uses Windows speech; an English speech pack is required. Transcripts are reviewed before use. API availability and charges depend on the provider account.
 
 Ollama setup links to the official installer, detects models, and offers an explicitly approved compact-model download with progress/cancel. Nothing is downloaded automatically.
 

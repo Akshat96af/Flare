@@ -23,7 +23,13 @@ export type Settings = {
   setup: boolean;
   roots: string[];
   exclusions: string[];
-  ai: { provider: string; model: string; speechCloud: boolean; speechMode?: 'fallback' | 'online'; speechModel?: string };
+  ai: {
+    provider: string;
+    model: string;
+    speechCloud: boolean;
+    speechMode?: 'fallback' | 'online';
+    speechModel?: string;
+  };
   recoveryDays: number;
   confirmConversions: boolean;
 };

@@ -15,6 +15,7 @@
     "test:desktop": "node scripts/smoke.cjs",
     "test:bugs": "node scripts/bugs-smoke.cjs",
     "test:ui": "node scripts/ui-smoke.cjs",
+    "test:voice": "node scripts/voice-smoke.cjs",
     "assets": "node scripts/assets.cjs",
     "notices": "node scripts/notices.cjs",
     "format": "prettier --write src desktop scripts tests package.json tsconfig.json vite.config.ts index.html",

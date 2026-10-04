@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Mic, Square, X, ArrowUp, LoaderCircle } from 'lucide-react';
+import { Mic, Square, X, ArrowUp, LoaderCircle, RotateCcw } from 'lucide-react';
 import { bridge } from './bridge';
 import type { Settings } from './types';
 
@@ -16,12 +16,16 @@ export default function Voice({
 }) {
   const [state, setState] = useState('preparing'),
     [error, setError] = useState(''),
-    [text, setText] = useState('');
+    [text, setText] = useState(''),
+    [attempt, setAttempt] = useState(0);
   const bars = useRef<HTMLDivElement>(null),
     stop = useRef<() => void>(() => {}),
     cancel = useRef<() => void>(() => {}),
     seenSignal = useRef(stopSignal);
   useEffect(() => {
+    setState('preparing');
+    setError('');
+    setText('');
     let active = true,
       stream: MediaStream | undefined,
       context: AudioContext | undefined,
@@ -30,13 +34,18 @@ export default function Voice({
       timer = 0,
       stopping = false,
       mode = 'preparing',
+      ready = false,
       recorded: Promise<void> | undefined;
     const chunks: Blob[] = [];
     let lastSound = 0,
       started = 0,
       heard = false;
     const stopRecording = () => {
-      if (recorded) return recorded;
+      if (recorded) {
+        stream?.getTracks().forEach((t) => t.stop());
+        context?.close().catch(() => {});
+        return recorded;
+      }
       recorded = new Promise<void>((resolve) => {
         if (rec?.state === 'recording') {
           rec.onstop = () => resolve();
@@ -50,6 +59,7 @@ export default function Voice({
       return recorded;
     };
     const fail = (message: string) => {
+      stopping = true;
       if (active) {
         setError(message);
         setState('error');
@@ -58,6 +68,7 @@ export default function Voice({
       bridge.call('voice-cancel').catch(() => {});
     };
     const finish = async (value: string) => {
+      stopping = true;
       await stopRecording();
       if (!active) return;
       if (value?.trim()) {
@@ -67,6 +78,10 @@ export default function Voice({
     };
     const cloud = async () => {
       if (!active) return;
+      if (!heard) {
+        fail('No microphone signal detected. Check the Windows input device and try again.');
+        return;
+      }
       setState('transcribing');
       await stopRecording();
       if (!active) return;
@@ -86,51 +101,83 @@ export default function Voice({
     stop.current = () => {
       if (stopping) return;
       stopping = true;
-      if (mode === 'preparing') return;
+      if (mode === 'preparing' || !ready) return;
       setState('transcribing');
       stopRecording();
       if (mode === 'local') bridge.call('voice-stop').catch((e) => fail(e.message));
       else cloud();
     };
+    const listening = () => {
+      if (!active || ready) return;
+      ready = true;
+      started = lastSound = Date.now();
+      setState('listening');
+      timer = window.setTimeout(() => stop.current(), 25000);
+      if (stopping) {
+        stopping = false;
+        stop.current();
+      }
+    };
+    const removeReady = bridge.on('voice-ready', () => {
+      if (mode === 'local') listening();
+    });
     (async () => {
       try {
-        const capability = await bridge.call('voice-status').catch(() => ({ available: false }));
+        const preferOnline = settings.ai.speechCloud && settings.ai.speechMode === 'online';
+        const capability = preferOnline
+          ? { available: false }
+          : await bridge.call('voice-status').catch(() => ({ available: false }));
         if (!active) return;
+        if (stopping) {
+          fail('Stopped before the microphone was ready. Try again.');
+          return;
+        }
         mode = capability.available ? 'local' : 'cloud';
         if (mode === 'cloud' && !settings.ai.speechCloud) {
-          fail(
-            'Install English Windows speech, or enable online voice fallback in Intelligence settings.',
-          );
+          fail('Install English Windows speech, or choose online voice in Intelligence settings.');
           return;
         }
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          },
         });
         if (!active) {
           await stopRecording();
           return;
         }
         context = new AudioContext();
+        await context.resume();
+        if (!active) {
+          await stopRecording();
+          return;
+        }
         const analyser = context.createAnalyser();
-        analyser.fftSize = 256;
+        analyser.fftSize = 512;
         context.createMediaStreamSource(stream).connect(analyser);
         const data = new Uint8Array(analyser.frequencyBinCount);
+        const waveform = new Float32Array(analyser.fftSize);
         const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus'
           : 'audio/webm';
-        rec = new MediaRecorder(stream, { mimeType: mime });
+        rec = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 64000 });
+        rec.onerror = () =>
+          fail('The microphone recording failed. Check your input device and try again.');
         rec.ondataavailable = (e) => {
           if (e.data.size) chunks.push(e.data);
         };
         rec.start(250);
-        started = lastSound = Date.now();
-        setState('listening');
+        if (mode === 'cloud') listening();
         const draw = () => {
-          if (!active || stopping) return;
+          if (!active || (stopping && ready)) return;
           analyser.getByteFrequencyData(data);
+          analyser.getFloatTimeDomainData(waveform);
           let sum = 0;
-          data.forEach((x) => (sum += x));
-          if (sum / data.length / 255 > 0.035) {
+          waveform.forEach((x) => (sum += x * x));
+          if (ready && Math.sqrt(sum / waveform.length) > 0.008) {
             lastSound = Date.now();
             heard = true;
           }
@@ -138,9 +185,10 @@ export default function Voice({
             bar.style.transform = `scaleY(${0.12 + (data[Math.floor((i * data.length) / 25)] / 255) * 1.8})`;
           });
           if (
+            ready &&
             settings.voiceMode === 'auto' &&
-            ((heard && Date.now() - lastSound > 1600 && Date.now() - started > 2500) ||
-              (!heard && Date.now() - started > 8000))
+            ((heard && Date.now() - lastSound > 2000 && Date.now() - started > 2500) ||
+              (!heard && Date.now() - started > 10000))
           ) {
             stop.current();
             return;
@@ -148,7 +196,6 @@ export default function Voice({
           frame = requestAnimationFrame(draw);
         };
         frame = requestAnimationFrame(draw);
-        timer = window.setTimeout(() => stop.current(), 25000);
         if (mode === 'local') {
           const result = bridge.call('voice-start');
           if (stopping) {
@@ -157,7 +204,12 @@ export default function Voice({
             bridge.call('voice-stop').catch(() => {});
           }
           try {
-            await finish(await result);
+            const transcript = await result;
+            if (!transcript?.trim())
+              throw new Error(
+                'Windows speech could not recognize a command. Try online voice in Intelligence settings.',
+              );
+            await finish(transcript);
           } catch (e) {
             if (!active) return;
             if (!settings.ai.speechCloud) {
@@ -165,8 +217,8 @@ export default function Voice({
               return;
             }
             mode = 'cloud';
-            if (stopping) await cloud();
-            else setState('listening');
+            if (stopping || heard) await cloud();
+            else listening();
           }
         } else if (stopping) await cloud();
       } catch (e) {
@@ -175,10 +227,11 @@ export default function Voice({
     })();
     return () => {
       active = false;
+      removeReady();
       stopRecording();
       bridge.call('voice-cancel').catch(() => {});
     };
-  }, [settings]);
+  }, [settings, attempt]);
   useEffect(() => {
     if (stopSignal !== seenSignal.current) {
       seenSignal.current = stopSignal;
@@ -251,6 +304,11 @@ export default function Voice({
       {state === 'listening' && (
         <button className="subtle" onClick={() => stop.current()}>
           <Square size={12} /> Stop listening
+        </button>
+      )}
+      {['error', 'review'].includes(state) && (
+        <button className="subtle" onClick={() => setAttempt((value) => value + 1)}>
+          <RotateCcw size={14} /> Try again
         </button>
       )}
     </section>

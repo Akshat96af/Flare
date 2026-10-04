@@ -215,7 +215,7 @@ export default function Settings({
             <div className="setting-row">
               <div>
                 <label>Voice mode</label>
-                <span>Hold your shortcut for 2 seconds.</span>
+                <span>Hold your shortcut for 1 second.</span>
               </div>
               <select
                 aria-label="Voice mode"
@@ -552,34 +552,57 @@ export default function Settings({
                   <div>
                     <label htmlFor="voice-recognition">Voice recognition</label>
                   </div>
-                  <select id="voice-recognition" disabled={busy || !['gemini', 'openai'].includes(provider)}
+                  <select
+                    id="voice-recognition"
+                    disabled={busy || !['gemini', 'openai'].includes(provider)}
                     value={!speech ? 'windows' : speechMode}
                     onChange={(event) => {
                       const mode = event.target.value;
                       setSpeech(mode !== 'windows');
                       setSpeechMode(mode === 'online' ? 'online' : 'fallback');
-                      if (!speechModel) setSpeechModel(provider === 'gemini' ? 'gemini-3.5-transcribe' : 'gpt-4o-transcribe');
-                    }}>
+                      if (!speechModel)
+                        setSpeechModel(
+                          provider === 'gemini' ? 'gemini-3.5-transcribe' : 'gpt-4o-transcribe',
+                        );
+                    }}
+                  >
                     <option value="windows">Windows only</option>
                     <option value="fallback">Windows + online fallback</option>
                     <option value="online">Online</option>
                   </select>
                 </div>
-                {speech && ['gemini', 'openai'].includes(provider) && <>
-                  <label className="field-label">Speech model
-                    <select aria-label="Speech model" value={speechModel} disabled={busy} onChange={event => setSpeechModel(event.target.value)}>
-                      {provider === 'gemini' ? <>
-                        <option value="gemini-3.5-transcribe">Gemini 3.5 Transcribe</option>
-                        <option value="">Same as Intelligence</option>
-                      </> : <>
-                        <option value="gpt-4o-transcribe">GPT-4o Transcribe</option>
-                        <option value="gpt-4o-mini-transcribe">GPT-4o Mini Transcribe</option>
-                        <option value="">Whisper</option>
-                      </>}
-                    </select>
-                    <small>{speechMode === 'online' ? 'Recordings are sent to your AI provider for transcription.' : 'Recordings are sent to your AI provider if Windows speech fails.'} API charges may apply. Nothing is sent until you start voice.</small>
-                  </label>
-                </>}
+                {speech && ['gemini', 'openai'].includes(provider) && (
+                  <>
+                    <label className="field-label">
+                      Speech model
+                      <select
+                        aria-label="Speech model"
+                        value={speechModel}
+                        disabled={busy}
+                        onChange={(event) => setSpeechModel(event.target.value)}
+                      >
+                        {provider === 'gemini' ? (
+                          <>
+                            <option value="gemini-3.5-transcribe">Gemini 3.5 Transcribe</option>
+                            <option value="">Same as Intelligence</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="gpt-4o-transcribe">GPT-4o Transcribe</option>
+                            <option value="gpt-4o-mini-transcribe">GPT-4o Mini Transcribe</option>
+                            <option value="">Whisper</option>
+                          </>
+                        )}
+                      </select>
+                      <small>
+                        {speechMode === 'online'
+                          ? 'Recordings are sent to your AI provider for transcription.'
+                          : 'Recordings are sent to your AI provider if Windows speech fails.'}{' '}
+                        API charges may apply. Nothing is sent until you start voice.
+                      </small>
+                    </label>
+                  </>
+                )}
               </>
             )}
             <button
@@ -588,7 +611,14 @@ export default function Settings({
               onClick={() =>
                 run(async () => {
                   onChange(
-                    await bridge.call('ai-save', { provider, model, key, speechCloud: speech, speechMode, speechModel }),
+                    await bridge.call('ai-save', {
+                      provider,
+                      model,
+                      key,
+                      speechCloud: speech,
+                      speechMode,
+                      speechModel,
+                    }),
                   );
                   setKey('');
                   setConnected('Saved');

@@ -157,7 +157,7 @@ function localVoice() {
       out += x;
       if (!notified && out.includes('FLARE_SPEECH_READY')) {
         notified = true;
-        send('voice-ready', {});
+        if (voice === child) send('voice-ready', {});
       }
     });
     child.stderr.on('data', (x) => (err += x));
@@ -498,9 +498,17 @@ async function dispatch(method, data = {}) {
       }
       const prefs = store.settings();
       const speechMode = data.speechMode ?? 'fallback';
-      if (!['fallback', 'online'].includes(speechMode)) throw new Error('Choose a valid voice mode.');
-      const speechModel = data.speechModel ? ai.normalizeModel(data.provider, data.speechModel) : '';
-      if (data.provider === 'openai' && speechModel && !['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'].includes(speechModel)) throw new Error('Choose a supported speech model.');
+      if (!['fallback', 'online'].includes(speechMode))
+        throw new Error('Choose a valid voice mode.');
+      const speechModel = data.speechModel
+        ? ai.normalizeModel(data.provider, data.speechModel)
+        : '';
+      if (
+        data.provider === 'openai' &&
+        speechModel &&
+        !['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'].includes(speechModel)
+      )
+        throw new Error('Choose a supported speech model.');
       prefs.ai = {
         provider: data.provider,
         model,
@@ -594,13 +602,17 @@ async function dispatch(method, data = {}) {
       voiceRequest?.abort();
       const controller = new AbortController();
       voiceRequest = controller;
-      try { return await ai.transcribe(
-        data.bytes,
-        data.mime,
-        store.settings().ai,
-        secret(store.settings().ai.provider),
-        controller.signal,
-      ); } finally { if (voiceRequest === controller) voiceRequest = null; }
+      try {
+        return await ai.transcribe(
+          data.bytes,
+          data.mime,
+          store.settings().ai,
+          secret(store.settings().ai.provider),
+          controller.signal,
+        );
+      } finally {
+        if (voiceRequest === controller) voiceRequest = null;
+      }
     }
     case 'hide':
       hideLauncher();

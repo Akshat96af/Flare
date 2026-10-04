@@ -1048,6 +1048,9 @@ select {
   gap: 10px;
   margin-top: 20px;
 }
+.voice-panel form + .subtle {
+  margin-top: 14px;
+}
 .transcript {
   flex: 1;
   min-width: 0;

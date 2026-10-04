@@ -29,7 +29,14 @@ const defaults = {
     '.cache',
     'Files/private',
   ],
-  ai: { provider: 'off', model: '', speechCloud: false, speechMode: 'fallback', speechModel: '', localModel: '' },
+  ai: {
+    provider: 'off',
+    model: '',
+    speechCloud: false,
+    speechMode: 'fallback',
+    speechModel: '',
+    localModel: '',
+  },
   recoveryDays: 0,
   confirmConversions: true,
 };

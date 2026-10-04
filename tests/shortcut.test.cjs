@@ -1,12 +1,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-test('voice starts exactly once after two seconds and push release stops it', () => {
+test('voice starts exactly once after one second and push release stops it', () => {
   const { createHold, HOLD_MS } = require('../desktop/shortcut.cjs');
-  assert.equal(HOLD_MS, 2000);
+  assert.equal(HOLD_MS, 1000);
   const hold = createHold('push');
-  assert.ok(!hold.advance(true, 1999).some((event) => event.event === 'voice'));
-  assert.deepEqual(hold.advance(true, 2000), [
+  assert.ok(!hold.advance(true, 999).some((event) => event.event === 'voice'));
+  assert.deepEqual(hold.advance(true, 1000), [
     { event: 'hold', data: { progress: 1 } },
     { event: 'voice', data: { action: 'start' } },
   ]);
@@ -26,7 +26,7 @@ test('dismissed holds cannot activate a hidden microphone and can rearm after re
   assert.deepEqual(hold.advance(false, 2200), [{ event: 'hold', data: { progress: 0 } }]);
   assert.equal(hold.done, true);
   const next = createHold('auto');
-  assert.ok(next.advance(true, 2000).some((event) => event.event === 'voice'));
+  assert.ok(next.advance(true, 1000).some((event) => event.event === 'voice'));
 });
 
 test('short taps never start voice and silence-stop does not stop on release', () => {

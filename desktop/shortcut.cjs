@@ -1,4 +1,4 @@
-const HOLD_MS = 2000;
+const HOLD_MS = 1000;
 
 function createHold(mode) {
   let started = false,
