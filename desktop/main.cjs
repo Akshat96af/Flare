@@ -25,6 +25,7 @@ const { interpretLocal } = require('./commands.cjs');
 const { chordHeld, foregroundBounds, powershell, scriptPath } = require('./native.cjs');
 const ai = require('./ai.cjs');
 const { createHold } = require('./shortcut.cjs');
+const { QuickShare } = require('./share.cjs');
 
 const isolated = process.env.FLARE_DATA_DIR;
 const portable = process.argv.includes('--portable') || !!process.env.PORTABLE_EXECUTABLE_DIR;
@@ -44,6 +45,7 @@ let win,
   voiceRequest,
   holding,
   aiRequest,
+  sharing,
   shortcutError = '',
   quitting = false,
   conversionWorker,
@@ -450,6 +452,56 @@ async function dispatch(method, data = {}) {
     }
     case 'preview':
       return preview(data.id);
+    case 'result-action': {
+      const item = search.get(data.id);
+      if (!item || !['file', 'folder', 'app'].includes(item.kind) || item.path.startsWith('shell:'))
+        throw new Error('Choose a local file or folder first.');
+      if (data.action === 'copy-path') {
+        clipboard.writeText(item.path);
+        return { message: 'Path copied' };
+      }
+      if (data.action === 'reveal') {
+        await fs.access(item.path);
+        shell.showItemInFolder(item.path);
+        return { message: 'Shown in File Explorer' };
+      }
+      throw new Error('Unsupported file action.');
+    }
+    case 'share-pick': {
+      if (sharing.status().active) throw new Error('Stop sharing before choosing another file.');
+      if (data.id) {
+        const item = search.get(data.id);
+        if (!item || item.kind !== 'file') throw new Error('Choose a file in Flare first.');
+        return sharing.select(item.path);
+      }
+      const result = await dialog.showOpenDialog(win, { properties: ['openFile'] });
+      return result.canceled ? null : sharing.select(result.filePaths[0]);
+    }
+    case 'share-start': {
+      if (data.confirm !== true) throw new Error('Confirm sharing on your trusted network first.');
+      const status = await sharing.start(data.id, data.address);
+      return {
+        ...status,
+        qrDataUrl: await require('qrcode').toDataURL(status.url, { width: 192, margin: 2 }),
+      };
+    }
+    case 'share-status': {
+      const status = sharing.status();
+      return status.active
+        ? {
+            ...status,
+            qrDataUrl: await require('qrcode').toDataURL(status.url, { width: 192, margin: 2 }),
+          }
+        : status;
+    }
+    case 'share-copy': {
+      const status = sharing.status();
+      if (!status.active) throw new Error('The share has expired.');
+      clipboard.writeText(status.url);
+      return true;
+    }
+    case 'share-stop':
+      return sharing.stop();
     case 'pick':
       return pick(data.kind);
     case 'drives': {
@@ -466,6 +518,26 @@ async function dispatch(method, data = {}) {
       return true;
     case 'models':
       return ai.models(data.provider, data.key || secret(data.provider));
+    case 'model-catalog':
+      return ai.catalogue(data.provider, data.key || secret(data.provider));
+    case 'ai-test': {
+      if (data.confirm !== true) throw new Error('Confirm this short API test first.');
+      aiRequest?.abort();
+      const controller = new AbortController();
+      aiRequest = controller;
+      const started = Date.now();
+      try {
+        await ai.plan(
+          'Reply with the answer Ready. Do not perform an action.',
+          { provider: data.provider, model: data.model },
+          data.key || secret(data.provider),
+          controller.signal,
+        );
+        return { model: data.model, elapsedMs: Date.now() - started };
+      } finally {
+        if (aiRequest === controller) aiRequest = null;
+      }
+    }
     case 'local-info':
       return {
         ...require('./local-model.cjs').hardware(),
@@ -491,11 +563,6 @@ async function dispatch(method, data = {}) {
         data.provider === 'off' || data.provider === 'local'
           ? ''
           : ai.credentials(data.provider, data.key?.trim() || secret(data.provider));
-      if (data.key && key) {
-        if (!safeStorage.isEncryptionAvailable())
-          throw new Error('Windows credential encryption is unavailable.');
-        store.set('key:' + data.provider, safeStorage.encryptString(key).toString('base64'));
-      }
       const prefs = store.settings();
       const speechMode = data.speechMode ?? 'fallback';
       if (!['fallback', 'online'].includes(speechMode))
@@ -509,6 +576,11 @@ async function dispatch(method, data = {}) {
         !['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'].includes(speechModel)
       )
         throw new Error('Choose a supported speech model.');
+      if (data.key && key) {
+        if (!safeStorage.isEncryptionAvailable())
+          throw new Error('Windows credential encryption is unavailable.');
+        store.set('key:' + data.provider, safeStorage.encryptString(key).toString('base64'));
+      }
       prefs.ai = {
         provider: data.provider,
         model,
@@ -640,6 +712,10 @@ app
     store = createStore(app.getPath('userData'));
     search = new Search(store, send);
     operations = new Operations(store, send);
+    sharing = new QuickShare((status) => {
+      send('share', { active: status.active, downloads: status.downloads });
+      tray?.setToolTip(status.active ? 'Flare - Quick Share active' : 'Flare');
+    });
     nativeTheme.themeSource = store.settings().theme;
     win = new BrowserWindow({
       width: 760,
@@ -700,6 +776,7 @@ app
           },
         },
         { type: 'separator' },
+        { label: 'Stop Quick Share', click: () => sharing.stop() },
         {
           label: 'Quit',
           click: () => {
@@ -755,6 +832,7 @@ app
       quitting = true;
       stopVoice(true);
       aiRequest?.abort();
+      sharing.stop();
       search.close();
       require('./local-model.cjs').cancel();
       conversionWorker?.terminate();

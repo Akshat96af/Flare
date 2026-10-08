@@ -115,7 +115,7 @@
     0 1px 3px rgba(0, 0, 0, 0.06);
 }
 :root[data-glass='on'] .glass-selection,
-:root[data-glass='on'] .result.is-selected {
+:root[data-glass='on'] .segmented:focus-within .glass-selection {
   background: linear-gradient(140deg, var(--glass-control), transparent 70%), var(--selected);
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
@@ -124,6 +124,8 @@
 }
 :root[data-glass='on'] .result.is-selected {
   border-color: var(--glass-control);
+  background: var(--selected);
+  box-shadow: none;
 }
 :root[data-glass='on'] .result.is-selected::before {
   content: '';
@@ -208,6 +210,7 @@ button:not(:disabled):active {
   box-shadow: inset 0 1px 0 var(--glass-control);
 }
 .search-content,
+.share-panel,
 .settings-panel,
 .tools-panel,
 .plan-panel,
@@ -293,10 +296,51 @@ button:not(:disabled):active {
   :root[data-glass='on'] .launcher::after {
     display: none;
   }
+  :root[data-glass='on'] .search-bar,
+  :root[data-glass='on'] .launcher-footer {
+    background: var(--surface);
+  }
+  :root[data-glass='on'] button::after,
+  :root[data-glass='on'] .voice-core::before {
+    display: none;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .glass-sheen {
     display: none;
+  }
+  button:not(:disabled):active {
+    transform: none;
+  }
+  .voice-core::before {
+    animation: none !important;
+  }
+}
+@media (prefers-contrast: more) {
+  :root[data-glass='on'] .launcher {
+    background: var(--raised);
+    backdrop-filter: none;
+    border-color: var(--text);
+  }
+  :root {
+    --muted: var(--text);
+    --faint: var(--text);
+  }
+  :root[data-glass='on']:not([data-theme='light']) {
+    --muted: var(--text);
+    --faint: var(--text);
+  }
+  .glass-sheen,
+  .launcher::before,
+  .launcher::after,
+  button::after,
+  .voice-core::before {
+    display: none !important;
+  }
+  .icon-button[aria-pressed='true'],
+  .result.is-selected {
+    outline: 1px solid var(--text);
+    outline-offset: -2px;
   }
 }
 @media (forced-colors: active) {

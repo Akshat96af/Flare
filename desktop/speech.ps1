@@ -14,7 +14,11 @@ public static class FlareSpeech {
   if(selected==null) throw new Exception("An English Windows speech recognizer is not installed.");
   using(var engine=new SpeechRecognitionEngine(selected)) {
    string text=""; var done=new ManualResetEventSlim(false);
-   engine.SetInputToDefaultAudioDevice(); engine.LoadGrammar(new DictationGrammar());
+   engine.SetInputToDefaultAudioDevice();
+   var dictation=new DictationGrammar(); dictation.Weight=0.6f; engine.LoadGrammar(dictation);
+   var commands=new Choices("open YouTube", "open Claude", "open Chrome", "open Gemini", "open Notepad", "open ChatGPT", "volume max", "volume mute", "brightness max", "volume fifty", "brightness fifty");
+   var builder=new GrammarBuilder(commands); builder.Culture=selected.Culture;
+   var grammar=new Grammar(builder); grammar.Weight=1.0f; engine.LoadGrammar(grammar);
    engine.InitialSilenceTimeout=TimeSpan.FromSeconds(12); engine.EndSilenceTimeout=TimeSpan.FromMilliseconds(1500);
    engine.SpeechRecognized+=(s,e)=>{if(e.Result.Confidence>=0.4)text+=(text.Length>0?" ":"")+e.Result.Text;};
    engine.RecognizeCompleted+=(s,e)=>{done.Set();};

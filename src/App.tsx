@@ -27,12 +27,15 @@ import {
   Sparkles,
   Eye,
   Copy,
+  Share2,
+  FolderOpen,
 } from 'lucide-react';
 import { bridge, desktop, basename, fileSize } from './bridge';
 import type { Result, Settings as Prefs, IndexStatus, Operation } from './types';
 import Settings from './Settings';
 import Tools, { Plan } from './Tools';
 import Voice from './Voice';
+import QuickShare from './QuickShare';
 import GlassRail from './GlassRail';
 import { usePressFeedback } from './usePressFeedback';
 
@@ -73,6 +76,8 @@ export default function App() {
     [notice, setNotice] = useState(''),
     [error, setError] = useState(''),
     [shortcutError, setShortcutError] = useState('');
+  const [shareId, setShareId] = useState<string | undefined>(),
+    [shareActive, setShareActive] = useState(false);
   const input = useRef<HTMLInputElement>(null),
     panel = useRef<HTMLDivElement>(null),
     sequence = useRef(0),
@@ -103,6 +108,7 @@ export default function App() {
       .catch((e) => setError(e.message));
     document.documentElement.dataset.environment = desktop ? 'desktop' : 'browser';
     const disposers = [
+      bridge.on('share', (data) => setShareActive(data.active)),
       bridge.on('activation', (data) => {
         if (data.contentHeight)
           document.documentElement.style.setProperty('--content-height', data.contentHeight + 'px');
@@ -535,14 +541,59 @@ export default function App() {
                     : ''}
                 </span>
                 {results[selected]?.kind === 'file' && (
-                  <button
-                    className="icon-button preview-button"
-                    title="Preview (Ctrl+Space)"
-                    aria-label={'Preview ' + results[selected].title}
-                    onClick={() => showPreview(results[selected])}
-                  >
-                    <Eye size={16} />
-                  </button>
+                  <>
+                    <button
+                      className="icon-button"
+                      title="Share file"
+                      aria-label="Share file"
+                      onClick={() => {
+                        setShareId(results[selected].id);
+                        setView('share');
+                      }}
+                    >
+                      <Share2 size={16} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="Show in folder"
+                      aria-label="Show in folder"
+                      onClick={() =>
+                        act(async () => {
+                          const result = await bridge.call('result-action', {
+                            id: results[selected].id,
+                            action: 'reveal',
+                          });
+                          setNotice(result.message);
+                        })
+                      }
+                    >
+                      <FolderOpen size={16} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="Copy path"
+                      aria-label="Copy path"
+                      onClick={() =>
+                        act(async () => {
+                          const result = await bridge.call('result-action', {
+                            id: results[selected].id,
+                            action: 'copy-path',
+                          });
+                          setNotice(result.message);
+                        })
+                      }
+                    >
+                      <Copy size={16} />
+                    </button>
+                    <button
+                      className="icon-button preview-button"
+                      title="Preview (Ctrl+Space)"
+                      aria-label={'Preview ' + results[selected].title}
+                      onClick={() => showPreview(results[selected])}
+                    >
+                      <Eye size={16} />
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -719,6 +770,7 @@ export default function App() {
             onClose={reset}
           />
         )}
+        {view === 'share' && <QuickShare initialFileId={shareId} onClose={reset} />}
         {view === 'tools' && (
           <Tools
             initial={tool}
@@ -740,6 +792,10 @@ export default function App() {
             settings={settings}
             onClose={reset}
             stopSignal={stopSignal}
+            onSettings={() => {
+              setSettingsPage('ai');
+              setView('settings');
+            }}
             onTranscript={(text) => {
               reset();
               setQuery(text);
@@ -869,6 +925,19 @@ export default function App() {
             </button>
           </div>
           <div className="footer-tools">
+            <button
+              className={'icon-button ' + (shareActive ? 'share-active' : '')}
+              title={shareActive ? 'Quick Share active' : 'Quick Share'}
+              aria-label="Quick Share"
+              aria-pressed={view === 'share'}
+              disabled={busy}
+              onClick={() => {
+                setShareId(undefined);
+                setView(view === 'share' ? 'search' : 'share');
+              }}
+            >
+              <Share2 size={15} />
+            </button>
             <button
               className="icon-button"
               title="File tools"

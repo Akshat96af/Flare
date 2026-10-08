@@ -63,6 +63,21 @@ const AxeBuilder = require('@axe-core/playwright').default;
       });
       global.fetch = async (url, options) => {
         const state = global.voiceFixture;
+        if (options.method === 'GET')
+          return new Response(
+            JSON.stringify({
+              models: [
+                {
+                  name: 'models/gemini-3.6-flash',
+                  supportedGenerationMethods: ['generateContent'],
+                },
+                {
+                  name: 'models/gemini-3.5-transcribe',
+                  supportedGenerationMethods: ['generateContent'],
+                },
+              ],
+            }),
+          );
         state.uploads++;
         state.url = url;
         const body = JSON.parse(options.body);
@@ -86,14 +101,17 @@ const AxeBuilder = require('@axe-core/playwright').default;
       };
     });
     await page.evaluate(() => {
-      window.voiceTest = { tracks: [], defer: false, release: null };
+      window.voiceTest = { tracks: [], defer: false, release: null, gain: 0.008 };
       // An oscillator feeds a MediaStream destination only, never speakers or a microphone.
       navigator.mediaDevices.getUserMedia = async () => {
         const context = new AudioContext();
         await context.resume();
         const source = context.createOscillator(),
           destination = context.createMediaStreamDestination();
-        source.connect(destination);
+        const gain = context.createGain();
+        gain.gain.value = window.voiceTest.gain;
+        source.connect(gain);
+        gain.connect(destination);
         source.start();
         const track = destination.stream.getAudioTracks()[0];
         window.voiceTest.tracks.push(track);
@@ -146,10 +164,11 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await page.getByRole('button', { name: /^Intelligence/ }).click();
     await page.getByLabel('Use a model', { exact: true }).selectOption('gemini');
     await page.getByLabel('API key', { exact: true }).fill('fixture-key');
+    await page.getByRole('button', { name: 'Check connection', exact: true }).click();
+    await page.getByText('1 models available', { exact: true }).waitFor();
     await page.getByLabel('Voice recognition', { exact: true }).selectOption('online');
-    await expect(page.getByLabel('Speech model', { exact: true })).toHaveValue(
-      'gemini-3.5-transcribe',
-    );
+    await expect(page.getByLabel('Speech model', { exact: true })).toHaveValue('');
+    await page.getByLabel('Speech model', { exact: true }).selectOption('gemini-3.5-transcribe');
     await page.getByRole('button', { name: 'Save connection', exact: true }).click();
     await page.getByText('Saved', { exact: true }).waitFor();
     const prefs = await page.evaluate(
@@ -192,6 +211,16 @@ const AxeBuilder = require('@axe-core/playwright').default;
     checks.push(
       'Explicit online mode bypasses Windows, uses dedicated model, retains chat model, and reviews transcript',
     );
+    await page.evaluate(() => { window.voiceTest.gain = 0; });
+    await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await page.getByRole('heading', { name: 'Listening.' }).waitFor();
+    await page.waitForTimeout(400);
+    await page.getByRole('button', { name: 'Stop listening' }).click();
+    await page.getByText(/No microphone signal detected/).waitFor();
+    assert.equal(await instance.evaluate(() => global.voiceFixture.uploads), 1);
+    await expect(page.getByRole('button', { name: 'Voice settings' })).toBeVisible();
+    await page.evaluate(() => { window.voiceTest.gain = 0.008; });
+    checks.push('Quiet synthetic input is captured; silence is not uploaded and recovery settings are reachable');
     await instance.evaluate(() => {
       global.voiceFixture.hold = true;
     });

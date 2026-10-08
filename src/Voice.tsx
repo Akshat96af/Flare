@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Mic, Square, X, ArrowUp, LoaderCircle, RotateCcw } from 'lucide-react';
+import { Mic, Square, X, ArrowUp, LoaderCircle, RotateCcw, Settings2 } from 'lucide-react';
 import { bridge } from './bridge';
 import type { Settings } from './types';
 
@@ -8,16 +8,22 @@ export default function Voice({
   onTranscript,
   onClose,
   stopSignal,
+  onSettings,
 }: {
   settings: Settings;
   onTranscript: (text: string) => void;
   onClose: () => void;
   stopSignal: number;
+  onSettings: () => void;
 }) {
   const [state, setState] = useState('preparing'),
     [error, setError] = useState(''),
     [text, setText] = useState(''),
-    [attempt, setAttempt] = useState(0);
+    [attempt, setAttempt] = useState(0),
+    [device, setDevice] = useState(() => localStorage.getItem('flare.microphone') || 'default'),
+    [devices, setDevices] = useState<MediaDeviceInfo[]>([]),
+    [signal, setSignal] = useState(''),
+    [engine, setEngine] = useState('');
   const bars = useRef<HTMLDivElement>(null),
     stop = useRef<() => void>(() => {}),
     cancel = useRef<() => void>(() => {}),
@@ -26,6 +32,7 @@ export default function Voice({
     setState('preparing');
     setError('');
     setText('');
+    setSignal('');
     let active = true,
       stream: MediaStream | undefined,
       context: AudioContext | undefined,
@@ -36,6 +43,12 @@ export default function Voice({
       mode = 'preparing',
       ready = false,
       recorded: Promise<void> | undefined;
+    let uploading = false,
+      signalState = '';
+    const preparationTimer = window.setTimeout(
+      () => fail('The microphone took too long to start. Check your input device and try again.'),
+      15000,
+    );
     const chunks: Blob[] = [];
     let lastSound = 0,
       started = 0,
@@ -59,6 +72,8 @@ export default function Voice({
       return recorded;
     };
     const fail = (message: string) => {
+      if (!active) return;
+      clearTimeout(preparationTimer);
       stopping = true;
       if (active) {
         setError(message);
@@ -77,7 +92,9 @@ export default function Voice({
       } else fail('No speech heard. Try again.');
     };
     const cloud = async () => {
-      if (!active) return;
+      if (!active || uploading) return;
+      uploading = true;
+      stopping = true;
       if (!heard) {
         fail('No microphone signal detected. Check the Windows input device and try again.');
         return;
@@ -95,6 +112,7 @@ export default function Voice({
     };
     cancel.current = () => {
       active = false;
+      clearTimeout(preparationTimer);
       stopRecording();
       bridge.call('voice-cancel').catch(() => {});
     };
@@ -110,6 +128,7 @@ export default function Voice({
     const listening = () => {
       if (!active || ready) return;
       ready = true;
+      clearTimeout(preparationTimer);
       started = lastSound = Date.now();
       setState('listening');
       timer = window.setTimeout(() => stop.current(), 25000);
@@ -133,6 +152,11 @@ export default function Voice({
           return;
         }
         mode = capability.available ? 'local' : 'cloud';
+        setEngine(
+          mode === 'local'
+            ? 'Windows speech'
+            : `${settings.ai.provider === 'gemini' ? 'Gemini' : 'OpenAI'} transcription`,
+        );
         if (mode === 'cloud' && !settings.ai.speechCloud) {
           fail('Install English Windows speech, or choose online voice in Intelligence settings.');
           return;
@@ -143,12 +167,32 @@ export default function Voice({
             noiseSuppression: true,
             autoGainControl: true,
             channelCount: 1,
+            ...(mode === 'cloud' && device !== 'default' ? { deviceId: { exact: device } } : {}),
           },
         });
         if (!active) {
           await stopRecording();
           return;
         }
+        if (stopping) {
+          fail('Stopped before the microphone was ready. Try again.');
+          await stopRecording();
+          return;
+        }
+        navigator.mediaDevices
+          .enumerateDevices()
+          .then((list) => {
+            if (active)
+              setDevices(
+                list.filter(
+                  (item) =>
+                    item.kind === 'audioinput' &&
+                    item.deviceId !== 'default' &&
+                    item.deviceId !== 'communications',
+                ),
+              );
+          })
+          .catch(() => {});
         context = new AudioContext();
         await context.resume();
         if (!active) {
@@ -177,9 +221,22 @@ export default function Voice({
           analyser.getFloatTimeDomainData(waveform);
           let sum = 0;
           waveform.forEach((x) => (sum += x * x));
-          if (ready && Math.sqrt(sum / waveform.length) > 0.008) {
+          const rms = Math.sqrt(sum / waveform.length);
+          if (ready && rms > 0.003) {
             lastSound = Date.now();
             heard = true;
+          }
+          const nextSignal =
+            rms > 0.65
+              ? 'Input is very loud'
+              : heard
+                ? 'Microphone signal detected'
+                : ready && Date.now() - started > 4000
+                  ? 'No input yet'
+                  : '';
+          if (nextSignal !== signalState) {
+            signalState = nextSignal;
+            setSignal(nextSignal);
           }
           bars.current?.querySelectorAll<HTMLElement>('i').forEach((bar, i) => {
             bar.style.transform = `scaleY(${0.12 + (data[Math.floor((i * data.length) / 25)] / 255) * 1.8})`;
@@ -222,16 +279,26 @@ export default function Voice({
           }
         } else if (stopping) await cloud();
       } catch (e) {
-        fail((e as Error).message);
+        const problem = e as Error;
+        fail(
+          problem.name === 'NotAllowedError'
+            ? 'Microphone access is blocked. Allow Flare in Windows microphone privacy settings.'
+            : problem.name === 'NotFoundError' || problem.name === 'OverconstrainedError'
+              ? 'This microphone is unavailable. Choose another input device.'
+              : problem.name === 'NotReadableError'
+                ? 'The microphone is busy or unavailable. Close other recording apps and try again.'
+                : problem.message,
+        );
       }
     })();
     return () => {
       active = false;
+      clearTimeout(preparationTimer);
       removeReady();
       stopRecording();
       bridge.call('voice-cancel').catch(() => {});
     };
-  }, [settings, attempt]);
+  }, [settings, attempt, device]);
   useEffect(() => {
     if (stopSignal !== seenSignal.current) {
       seenSignal.current = stopSignal;
@@ -254,6 +321,30 @@ export default function Voice({
           <X size={17} />
         </button>
       </div>
+      <div className="voice-source">
+        <span>{engine}</span>
+        {settings.ai.speechCloud && settings.ai.speechMode === 'online' && (
+          <select
+            aria-label="Microphone"
+            value={device}
+            disabled={state === 'transcribing'}
+            onChange={(event) => {
+              localStorage.setItem('flare.microphone', event.target.value);
+              setDevice(event.target.value);
+            }}
+          >
+            <option value="default">Default microphone</option>
+            {devices.map((item, i) => (
+              <option key={item.deviceId} value={item.deviceId}>
+                {item.label || `Microphone ${i + 1}`}
+              </option>
+            ))}
+            {device !== 'default' && !devices.some((item) => item.deviceId === device) && (
+              <option value={device}>Selected microphone unavailable</option>
+            )}
+          </select>
+        )}
+      </div>
       <div className="voice-visual" data-state={state} aria-hidden="true">
         <div className="voice-core">
           {processing ? <LoaderCircle className="spin" size={24} /> : <Mic size={24} />}
@@ -275,6 +366,11 @@ export default function Voice({
                 ? 'You said...'
                 : "Let's try that again."}
       </h2>
+      {state === 'listening' && (
+        <p className="voice-signal" role="status">
+          {signal || 'Waiting for speech'}
+        </p>
+      )}
       {state === 'review' ? (
         <form
           onSubmit={(e) => {
@@ -309,6 +405,17 @@ export default function Voice({
       {['error', 'review'].includes(state) && (
         <button className="subtle" onClick={() => setAttempt((value) => value + 1)}>
           <RotateCcw size={14} /> Try again
+        </button>
+      )}
+      {state === 'error' && (
+        <button
+          className="subtle"
+          onClick={() => {
+            cancel.current();
+            onSettings();
+          }}
+        >
+          <Settings2 size={14} /> Voice settings
         </button>
       )}
     </section>

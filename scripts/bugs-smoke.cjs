@@ -219,12 +219,12 @@ const { expect } = require('@playwright/test');
     const modelSelect = page.getByRole('combobox', { name: 'Model', exact: true });
     assert.equal(
       await modelSelect.inputValue(),
-      'gemini-3.6-flash',
-      'Gemini starts with 3.6 Flash',
+      '',
+      'New connections do not invent model availability',
     );
     assert.deepEqual(
       await modelSelect.locator('option').evaluateAll((options) => options.map((x) => x.value)),
-      ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash'],
+      [''],
     );
     const connectionBounds = await page
       .getByRole('button', { name: 'Check connection', exact: true })
@@ -242,7 +242,7 @@ const { expect } = require('@playwright/test');
     await page.getByLabel('API key', { exact: true }).fill('fixture-key');
     await audit('model selection before connection');
     await page.getByRole('button', { name: 'Check connection', exact: true }).click();
-    await page.getByText('Key accepted', { exact: true }).waitFor();
+    await page.getByText('3 models available', { exact: true }).waitFor();
     assert.deepEqual(
       await page.getByLabel('Model', { exact: true }).locator('option').allTextContents(),
       ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'],
@@ -265,8 +265,8 @@ const { expect } = require('@playwright/test');
     );
     assert.equal(
       await modelSelect.locator('option').count(),
-      3,
-      'Model selector remains populated without rechecking the connection',
+      1,
+      'Saved model remains selected without claiming an undiscovered catalogue',
     );
     await page.screenshot({ path: path.join(directory, '02-model-selection.png') });
     checks.push(

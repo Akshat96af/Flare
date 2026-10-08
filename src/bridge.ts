@@ -18,7 +18,7 @@ const defaultSettings: Settings = {
 };
 let previewSettings = { ...defaultSettings };
 export const desktop = !!window.flare;
-export const bridge: Bridge = window.flare || {
+const transport: Bridge = window.flare || {
   async call(method, data) {
     if (method === 'snapshot')
       return {
@@ -44,6 +44,18 @@ export const bridge: Bridge = window.flare || {
   },
   on() {
     return () => {};
+  },
+};
+export const bridge: Bridge = {
+  on: (event, callback) => transport.on(event, callback),
+  async call(method, data) {
+    try {
+      return await transport.call(method, data);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'This action could not be completed.';
+      throw new Error(message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, ''));
+    }
   },
 };
 export const basename = (value: string) => value.split(/[\\/]/).pop() || value;

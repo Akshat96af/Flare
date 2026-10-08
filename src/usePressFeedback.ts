@@ -7,6 +7,9 @@ export function usePressFeedback(root: RefObject<HTMLElement | null>) {
     if (!element) return;
     const active = new Map<HTMLElement, Animation[]>();
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    const transparency = matchMedia('(prefers-reduced-transparency: reduce)');
+    const contrast = matchMedia('(prefers-contrast: more)');
+    const forcedColors = matchMedia('(forced-colors: active)');
     const stop = () => {
       active.forEach((animations) => animations.forEach((animation) => animation.cancel()));
       active.clear();
@@ -14,18 +17,36 @@ export function usePressFeedback(root: RefObject<HTMLElement | null>) {
     const press = (event: MouseEvent) => {
       if (motion.matches || !(event.target instanceof Element)) return;
       const control = event.target.closest<HTMLElement>('button, select, input[type="checkbox"]');
-      if (!control || control.matches(':disabled') || !element.contains(control)) return;
+      if (
+        !control ||
+        control.matches(':disabled, [aria-disabled="true"]') ||
+        control.closest('[inert]') ||
+        !element.contains(control)
+      )
+        return;
+      // Sample only on interruption, never in an animation loop.
+      const previousScale = active.has(control) ? getComputedStyle(control).scale : 'none';
       active.get(control)?.forEach((animation) => animation.cancel());
-      const animation = control.animate([{ scale: '0.97' }, { scale: '1' }], {
-        duration: 180,
-        easing: 'cubic-bezier(0.23, 1, 0.32, 1)',
-      });
+      const scale = control.matches('.result-main, .setting-link') ? '0.995' : '0.97';
+      const animation = control.animate(
+        [{ scale: previousScale === 'none' ? scale : previousScale }, { scale: '1' }],
+        {
+          duration: 180,
+          easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+        },
+      );
       const animations = [animation];
-      if (control.matches('button') && document.documentElement.dataset.glass === 'on') {
+      if (
+        control.matches('button') &&
+        document.documentElement.dataset.glass === 'on' &&
+        !transparency.matches &&
+        !contrast.matches &&
+        !forcedColors.matches
+      ) {
         animations.push(
           control.animate([{ opacity: 0.8 }, { opacity: 0 }], {
             pseudoElement: '::after',
-            duration: 260,
+            duration: 220,
             easing: 'ease-out',
           }),
         );
@@ -37,9 +58,19 @@ export function usePressFeedback(root: RefObject<HTMLElement | null>) {
     };
     element.addEventListener('click', press, true);
     motion.addEventListener('change', stop);
+    transparency.addEventListener('change', stop);
+    contrast.addEventListener('change', stop);
+    forcedColors.addEventListener('change', stop);
+    window.addEventListener('blur', stop);
+    document.addEventListener('visibilitychange', stop);
     return () => {
       element.removeEventListener('click', press, true);
       motion.removeEventListener('change', stop);
+      transparency.removeEventListener('change', stop);
+      contrast.removeEventListener('change', stop);
+      forcedColors.removeEventListener('change', stop);
+      window.removeEventListener('blur', stop);
+      document.removeEventListener('visibilitychange', stop);
       stop();
     };
   }, [root]);

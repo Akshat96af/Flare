@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { bridge, desktop, basename } from './bridge';
 import type { Settings as Prefs, IndexStatus } from './types';
-const geminiModels = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash'];
 function Toggle({
   checked,
   onChange,
@@ -63,6 +62,9 @@ export default function Settings({
     [key, setKey] = useState(''),
     [model, setModel] = useState(value.ai.model),
     [models, setModels] = useState<string[]>([]),
+    [speechModels, setSpeechModels] = useState<string[]>([]),
+    [testApproval, setTestApproval] = useState(false),
+    [tested, setTested] = useState(''),
     [speech, setSpeech] = useState(value.ai.speechCloud),
     [speechMode, setSpeechMode] = useState(value.ai.speechMode || 'fallback'),
     [speechModel, setSpeechModel] = useState(value.ai.speechModel || ''),
@@ -80,12 +82,17 @@ export default function Settings({
         .catch(() => {});
   }, [provider]);
   useEffect(() => bridge.on('model-download', setDownload), []);
-  const modelOptions = [
-    ...new Set([
-      ...(models.length ? models : provider === 'gemini' ? geminiModels : []),
-      ...(model ? [model] : []),
-    ]),
-  ];
+  useEffect(() => {
+    setTested('');
+    setTestApproval(false);
+  }, [provider, model, key]);
+  useEffect(
+    () => () => {
+      bridge.call('ai-cancel').catch(() => {});
+    },
+    [],
+  );
+  const modelOptions = [...new Set([...models, ...(model ? [model] : [])])];
   const run = async (task: () => Promise<any>) => {
     if (pending.current) return;
     pending.current = true;
@@ -105,16 +112,19 @@ export default function Settings({
     run(async () => {
       setConnected('');
       setModels([]);
-      const list = await bridge.call('models', { provider, key });
+      setSpeechModels([]);
+      const catalogue = await bridge.call('model-catalog', { provider, key });
+      const list: string[] = catalogue.models;
       setModels(list);
+      setSpeechModels(catalogue.speechModels);
       setModel(
         list.includes(model)
           ? model
-          : provider === 'gemini' && list.includes(geminiModels[0])
-            ? geminiModels[0]
+          : provider === 'gemini' && list.includes('gemini-3.6-flash')
+            ? 'gemini-3.6-flash'
             : list[0] || '',
       );
-      setConnected(list.length ? 'Key accepted' : 'No compatible models found.');
+      setConnected(list.length ? `${list.length} models available` : 'No compatible models found.');
     });
   const addFolder = () =>
     run(async () => {
@@ -401,7 +411,8 @@ export default function Settings({
                 onChange={(e) => {
                   setProvider(e.target.value);
                   setModels([]);
-                  setModel(e.target.value === 'gemini' ? geminiModels[0] : '');
+                  setSpeechModels([]);
+                  setModel(e.target.value === value.ai.provider ? value.ai.model : '');
                   setConnected('');
                   setKey('');
                   setSpeech(false);
@@ -433,6 +444,7 @@ export default function Settings({
                         setKey(e.target.value);
                         setConnected('');
                         setModels([]);
+                        setSpeechModels([]);
                       }}
                     />
                     <small>Encrypted on this computer. API usage is billed by your provider.</small>
@@ -537,6 +549,60 @@ export default function Settings({
                     ))}
                   </select>
                 </label>
+                <div className="connection-test">
+                  {!testApproval ? (
+                    <button
+                      className="subtle"
+                      disabled={busy || !model}
+                      onClick={() => setTestApproval(true)}
+                    >
+                      <Check size={15} /> Test response
+                    </button>
+                  ) : (
+                    <div className="test-confirmation">
+                      <p>
+                        Send one short test to {provider}? API quota or charges may apply. No files
+                        or audio are sent.
+                      </p>
+                      <div className="button-row">
+                        <button
+                          className="primary"
+                          disabled={busy}
+                          onClick={() =>
+                            run(async () => {
+                              setTested('');
+                              const result = await bridge.call('ai-test', {
+                                provider,
+                                model,
+                                key,
+                                confirm: true,
+                              });
+                              setTested(
+                                `Response verified / ${(result.elapsedMs / 1000).toFixed(1)}s`,
+                              );
+                              setTestApproval(false);
+                            })
+                          }
+                        >
+                          Run test
+                        </button>
+                        <button
+                          className="subtle"
+                          disabled={busy}
+                          onClick={() => setTestApproval(false)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {tested && (
+                    <span role="status" className="connection-verified">
+                      <Check size={14} />
+                      {tested}
+                    </span>
+                  )}
+                </div>
                 {value.developer && (
                   <label className="field-label">
                     Custom model ID
@@ -560,9 +626,9 @@ export default function Settings({
                       const mode = event.target.value;
                       setSpeech(mode !== 'windows');
                       setSpeechMode(mode === 'online' ? 'online' : 'fallback');
-                      if (!speechModel)
+                      if (!speechModel && provider === 'openai')
                         setSpeechModel(
-                          provider === 'gemini' ? 'gemini-3.5-transcribe' : 'gpt-4o-transcribe',
+                          speechModels.includes('gpt-4o-transcribe') ? 'gpt-4o-transcribe' : '',
                         );
                     }}
                   >
@@ -581,17 +647,15 @@ export default function Settings({
                         disabled={busy}
                         onChange={(event) => setSpeechModel(event.target.value)}
                       >
-                        {provider === 'gemini' ? (
-                          <>
-                            <option value="gemini-3.5-transcribe">Gemini 3.5 Transcribe</option>
-                            <option value="">Same as Intelligence</option>
-                          </>
-                        ) : (
-                          <>
-                            <option value="gpt-4o-transcribe">GPT-4o Transcribe</option>
-                            <option value="gpt-4o-mini-transcribe">GPT-4o Mini Transcribe</option>
-                            <option value="">Whisper</option>
-                          </>
+                        <option value="">
+                          {provider === 'gemini' ? 'Same as Intelligence' : 'Whisper'}
+                        </option>
+                        {[...new Set([...speechModels, ...(speechModel ? [speechModel] : [])])].map(
+                          (id) => (
+                            <option key={id} value={id}>
+                              {id}
+                            </option>
+                          ),
                         )}
                       </select>
                       <small>

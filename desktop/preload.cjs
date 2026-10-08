@@ -5,11 +5,19 @@ const allowed = new Set([
   'search',
   'open',
   'preview',
+  'result-action',
+  'share-pick',
+  'share-start',
+  'share-status',
+  'share-stop',
+  'share-copy',
   'pick',
   'drives',
   'index',
   'clipboard-clear',
   'models',
+  'model-catalog',
+  'ai-test',
   'ai-save',
   'ai-plan',
   'ai-cancel',
@@ -48,6 +56,7 @@ contextBridge.exposeInMainWorld('flare', {
         'operation',
         'theme',
         'model-download',
+        'share',
       ].includes(event)
     )
       throw new Error('Unsupported event.');
