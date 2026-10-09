@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { bridge, desktop, basename } from './bridge';
 import type { Settings as Prefs, IndexStatus } from './types';
+import { usePanelMotion } from './usePanelMotion';
 function Toggle({
   checked,
   onChange,
@@ -74,6 +75,8 @@ export default function Settings({
     [downloading, setDownloading] = useState(false),
     [approveDownload, setApproveDownload] = useState(false);
   const pending = useRef(false);
+  const panel = useRef<HTMLElement>(null);
+  usePanelMotion(panel, page);
   useEffect(() => {
     if (provider === 'local')
       bridge
@@ -138,7 +141,7 @@ export default function Settings({
         );
     });
   return (
-    <section className="settings-panel">
+    <section className="settings-panel" ref={panel}>
       <div className="section-heading">
         <div className="heading-group">
           {page !== 'general' && (

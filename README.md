@@ -31,6 +31,8 @@ Use `npm run desktop:dev` for live UI development. `npm run dev` is a browser pr
 - File tools provide image/PDF conversion, image compression, organization, and older-file review. Selected-file previews, durable history, and Undo protect changes. Balanced trust may skip the extra conversion-output review, never move/cleanup approval.
 - Clipboard history starts off. Opt-in retains at most 50 text items for up to 7 days, with clear/disable controls and supported sensitive-content markers.
 - Liquid-glass edges, pointer reflections, and elastic controls work in light/dark modes. Turn glass off in Settings; reduced-motion preferences are respected.
+- Quick Share creates a 10-minute file link and QR code on a trusted local network. Transfers are unencrypted HTTP, require approval, and can be stopped from the panel or tray. No hosting is required.
+- File results include Show in folder, Copy path and Share actions.
 
 Examples: `open YouTube`, `volume max`, `brightness 50 percent`, `12 * (3 + 4)`, `find photos from June 2025`, `photos 2025-06-12`, `search drives D and E for invoice`.
 
@@ -43,6 +45,8 @@ When no local result matches, enabled Intelligence offers **Ask AI**. Answers ar
 ChatGPT/Claude/Gemini consumer subscriptions are not assumed to include API credits. Voice recognition can use Windows only, Windows with online fallback, or online transcription directly. Online modes are separately opt-in and send recorded audio to the selected OpenAI/Gemini provider. Speech models are independent of the Intelligence model, including Gemini 3.5 Transcribe and GPT-4o Transcribe/Mini. Local English recognition uses Windows speech; an English speech pack is required. Transcripts are reviewed before use. API availability and charges depend on the provider account.
 
 Ollama setup links to the official installer, detects models, and offers an explicitly approved compact-model download with progress/cancel. Nothing is downloaded automatically.
+
+See [Gemini and voice setup](docs/GEMINI_AND_VOICE.md) for connection testing, microphone selection and provider errors. The separate Test response action asks before making a potentially billable generation request. Model choices come from account discovery rather than an assumed list.
 
 ## Scope
 
@@ -58,6 +62,9 @@ Recovery does not expire automatically. Undo skips later edits and occupied orig
 npm test
 npm run test:desktop
 npm run test:bugs
+npm run test:voice
+npm run test:ui
+npm run test:features
 npm run format:check
 npm run package
 ```

@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from 'react';
+import { cinematicEase } from './usePanelMotion';
 
 // One delegated listener covers controls added by every panel, including keyboard clicks.
 export function usePressFeedback(root: RefObject<HTMLElement | null>) {
@@ -27,12 +28,20 @@ export function usePressFeedback(root: RefObject<HTMLElement | null>) {
       // Sample only on interruption, never in an animation loop.
       const previousScale = active.has(control) ? getComputedStyle(control).scale : 'none';
       active.get(control)?.forEach((animation) => animation.cancel());
-      const scale = control.matches('.result-main, .setting-link') ? '0.995' : '0.97';
+      const scale = control.matches('.result-main, .setting-link')
+        ? '0.995'
+        : control.matches('.icon-button')
+          ? '0.86'
+          : '0.96';
       const animation = control.animate(
-        [{ scale: previousScale === 'none' ? scale : previousScale }, { scale: '1' }],
+        [
+          { scale: previousScale === 'none' ? scale : previousScale },
+          { scale: control.matches('.icon-button') ? '1.045' : '1.006', offset: 0.58 },
+          { scale: '1' },
+        ],
         {
-          duration: 180,
-          easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+          duration: 460,
+          easing: cinematicEase,
         },
       );
       const animations = [animation];
@@ -44,9 +53,9 @@ export function usePressFeedback(root: RefObject<HTMLElement | null>) {
         !forcedColors.matches
       ) {
         animations.push(
-          control.animate([{ opacity: 0.8 }, { opacity: 0 }], {
+          control.animate([{ opacity: 0.9 }, { opacity: 0 }], {
             pseudoElement: '::after',
-            duration: 220,
+            duration: 600,
             easing: 'ease-out',
           }),
         );

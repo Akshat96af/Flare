@@ -75,7 +75,7 @@ export default function QuickShare({
       setBusy(false);
     }
   };
-  const seconds = Math.max(0, Math.ceil(((status.expiresAt || now) - now) / 1000));
+  const seconds = Math.min(600, Math.max(0, Math.ceil(((status.expiresAt || now) - now) / 1000)));
   return (
     <section className="share-panel" aria-label="Quick Share">
       <div className="section-heading">

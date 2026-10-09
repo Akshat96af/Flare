@@ -29,4 +29,41 @@ This is a preview until these checks are completed. Compilation/screenshots are 
 
 ## Dependency Review
 
-The local runtime advisory check reported zero vulnerabilities. The full development-tool audit still reports GHSA-ch52-4w7c-c8xp through `http-cache-semantics` in the Electron packaging chain (eight affected transitive packages). Do not apply the suggested breaking downgrade blindly. This dependency was verified absent from the packaged application; the build-tool advisory still needs upstream remediation before a public release.
+The most recent runtime advisory check found three moderate entries in the `mammoth -> argparse -> sprintf-js` chain (GHSA-hp3w-g68c-fv3c). The full development-tool audit also has packaging-chain advisories. Do not apply the suggested breaking downgrade blindly. Dependency advisories need separate review before a public release; passing functional tests does not resolve them.
+
+## Quick Share and connection checks
+
+`npm run test:features` exercises the native picker and IPC, explicit sharing approval, a generated dummy-file download, QR pixel rendering, clipboard, panel reopening and share revocation. It uses a temporary private-network listener and closes the app afterward. Gemini HTTP is mocked; a separate test confirmation must precede the one generation request. Dark and compact/light states receive automated accessibility scans. A second physical device, firewall prompts and guest/VPN networks remain manual checks.
+
+Share unit tests use loopback only, reject unknown selections, foreign Host headers and write methods, and verify changed-file rejection and expiry. Voice tests include quieter synthetic input and silence rejection; they do not establish human transcription accuracy.
+
+## Stability regressions
+
+Focused red/green tests reproduce and cover overlapping operation preflight, stopping a share during startup, and preserving selection indices after a failed disk-space check. Native UI checks cover late file-plan responses after dismissal and bounded navigation motion. The speech waveform uses the recorded time-domain signal rather than sparse frequency-bin samples, so quiet input has visible feedback. Voice failures cannot restart from late readiness callbacks.
+
+Release blockers remain: the unresolved runtime dependency advisory, unsigned distribution, live provider/audio verification, clean-machine installation, different microphones/GPUs and cross-device LAN/firewall checks. These changes improve stability but do not establish production readiness by themselves.
+
+## Packaged validation: 2026-10-09
+
+The current Windows installer and portable ZIP were produced, and the unpacked executable was tested with isolated profiles. The packaged backend and frontend assets match the working files; the archive contains no `Files/private` material.
+
+- `npm test`: 44 passed, zero failures.
+- Packaged `test:desktop`, `test:ui`, `test:features`, `test:voice`, and `test:bugs`: all passed.
+- Formatting and diff whitespace checks passed.
+- Native UI tests observed the 300 ms panel animation and verified reduced-motion cancellation, rapid-click settling, keyboard isolation and compact layouts.
+- Screenshot review covered light settings, 380 px settings, and active dark Quick Share, including the corrected header inset and ten-minute timer.
+- Automated accessibility scans reported no violations in tested states. Some glass contrast checks remain incomplete and need human review.
+
+Evidence directories under ignored `Files/private/verification/`: `desktop-1791553944381`, `ui-1791554006685`, `features-1791554037617`, `voice-1791554082832`, and `bugs-1791554126113`. Voice and provider tests used synthetic audio and mocked responses, with zero real microphone access or paid API requests. Quick Share transferred only a generated fixture; cross-device delivery is not established by this test.
+
+## Motion redesign: 2026-10-09
+
+This later pass replaces the preceding 300 ms panel effect and optical styling. It adds a 680 ms launcher entrance, directional 560 ms navigation with a bounded content cascade, a shared 460 ms hover lens, damped pointer reflections, and new beveled rail/footer materials. Current timings and opaque-surface contrast calculations are in `DESIGN_REVIEW.md`.
+
+Source-build native checks passed for desktop workflows (`desktop-1791555109882`), UI (`ui-1791555186575`), synthetic voice (`voice-1791555252140`), and Quick Share/provider settings (`features-1791555283314`). Build and formatting checks passed. Tested accessibility states reported zero automated violations; this is not full accessibility conformance.
+
+The UI test checks actual changed pixels between paused transition frames, verifies the shared hover lens travels between controls, and changes reduced-motion preferences during an active launcher entrance. It also covers forced colors, rapid clicks, glass opt-out and a 380 px window. The first narrow-window run reproduced invisible hover-lens overflow; resetting its geometry on cancellation and observing launcher resizes fixed it, and the regression check now passes.
+
+A 29-sample animated capture of the actual rendered settings transition is saved privately in `motion-redesign-1791555425238/motion-preview.webp` (the encoder combines identical frames). It samples the animation timeline for review; it is not a recording or benchmark of real-time frame rate. No paid API calls, microphone recordings, or personal-file transfers were used in this visual pass.
+
+The redesigned packaged executable passed the same UI checks in `ui-1791555518782`. Its frontend assets match the final source build, and the archive contains no private reference files.

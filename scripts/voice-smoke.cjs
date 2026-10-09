@@ -211,7 +211,9 @@ const AxeBuilder = require('@axe-core/playwright').default;
     checks.push(
       'Explicit online mode bypasses Windows, uses dedicated model, retains chat model, and reviews transcript',
     );
-    await page.evaluate(() => { window.voiceTest.gain = 0; });
+    await page.evaluate(() => {
+      window.voiceTest.gain = 0;
+    });
     await page.getByRole('button', { name: 'Try again', exact: true }).click();
     await page.getByRole('heading', { name: 'Listening.' }).waitFor();
     await page.waitForTimeout(400);
@@ -219,8 +221,12 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await page.getByText(/No microphone signal detected/).waitFor();
     assert.equal(await instance.evaluate(() => global.voiceFixture.uploads), 1);
     await expect(page.getByRole('button', { name: 'Voice settings' })).toBeVisible();
-    await page.evaluate(() => { window.voiceTest.gain = 0.008; });
-    checks.push('Quiet synthetic input is captured; silence is not uploaded and recovery settings are reachable');
+    await page.evaluate(() => {
+      window.voiceTest.gain = 0.008;
+    });
+    checks.push(
+      'Quiet synthetic input is captured; silence is not uploaded and recovery settings are reachable',
+    );
     await instance.evaluate(() => {
       global.voiceFixture.hold = true;
     });

@@ -34,6 +34,7 @@ class QuickShare {
     this.selections = new Map();
     this.current = null;
     this.starting = false;
+    this.revision = 0;
   }
   async select(file) {
     const resolved = path.resolve(file);
@@ -70,6 +71,7 @@ class QuickShare {
     if (!this.addresses().includes(address))
       throw new Error('Connect to a private Wi-Fi or Ethernet network first.');
     this.starting = true;
+    const revision = this.revision;
     try {
       const stat = await fs.lstat(selected.file);
       if (
@@ -78,6 +80,7 @@ class QuickShare {
         (await fs.realpath(selected.file)) !== selected.file
       )
         throw new Error('This file changed. Choose it again.');
+      if (revision !== this.revision) throw new Error('Sharing cancelled.');
       const token = randomBytes(32).toString('base64url');
       const current = {
         ...selected,
@@ -180,6 +183,11 @@ class QuickShare {
         server.once('error', reject);
         server.listen(0, address, resolve);
       });
+      if (revision !== this.revision) {
+        current.sockets.forEach((socket) => socket.destroy());
+        await new Promise((resolve) => server.close(resolve));
+        throw new Error('Sharing cancelled.');
+      }
       current.url = `http://${address}:${server.address().port}/${token}`;
       this.current = current;
       current.timer = setTimeout(() => this.stop(), 10 * 60000);
@@ -191,6 +199,7 @@ class QuickShare {
     }
   }
   async stop() {
+    this.revision++;
     const current = this.current;
     if (!current) return this.status();
     this.current = null;

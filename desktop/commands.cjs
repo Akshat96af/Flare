@@ -9,7 +9,25 @@ function interpretLocal(input) {
     return {
       kind: 'system',
       command: m[1].toLowerCase(),
-      value: /^max/i.test(m[2]) ? 100 : /^min/i.test(m[2]) ? 0 : ({ mute: 0, zero: 0, ten: 10, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100, 'one hundred': 100 }[m[2].toLowerCase()] ?? Math.min(100, Number(m[2]))),
+      value: /^max/i.test(m[2])
+        ? 100
+        : /^min/i.test(m[2])
+          ? 0
+          : ({
+              mute: 0,
+              zero: 0,
+              ten: 10,
+              twenty: 20,
+              thirty: 30,
+              forty: 40,
+              fifty: 50,
+              sixty: 60,
+              seventy: 70,
+              eighty: 80,
+              ninety: 90,
+              hundred: 100,
+              'one hundred': 100,
+            }[m[2].toLowerCase()] ?? Math.min(100, Number(m[2]))),
     };
   m = text.match(/^open\s+(.+)$/i);
   if (m) {

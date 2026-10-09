@@ -132,8 +132,19 @@ class Operations {
   }
   async execute(id, render, selection) {
     if (this.running) throw new Error('An operation is already running.');
-    const plan = this.plans.get(id);
-    if (!plan) throw new Error('This preview expired. Please create a new preview.');
+    this.running = true;
+    this.cancel = false;
+    try {
+      return await this.executePlan(id, render, selection);
+    } finally {
+      this.running = false;
+    }
+  }
+  async executePlan(id, render, selection) {
+    const preview = this.plans.get(id);
+    if (!preview) throw new Error('This preview expired. Please create a new preview.');
+    // A failed preflight must not change indices in the preview the user is reviewing.
+    const plan = { ...preview, items: preview.items.map((item) => ({ ...item })) };
     if (selection !== undefined) {
       if (
         !Array.isArray(selection) ||
@@ -167,8 +178,6 @@ class Operations {
         throw new Error('Not enough free space for this operation and recovery.');
     }
     this.plans.delete(id);
-    this.running = true;
-    this.cancel = false;
     plan.status = 'running';
     this.store.putOperation(plan);
     try {
@@ -235,7 +244,6 @@ class Operations {
           : 'done';
       return plan;
     } finally {
-      this.running = false;
       this.store.putOperation(plan);
       this.emit('operation', plan);
     }

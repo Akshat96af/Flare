@@ -44,21 +44,41 @@ test('Gemini canonicalizes model resources and sends POST with room for reasonin
 });
 
 test('model catalogue separates discovered speech models from command models', async () => {
-  await withFetch(async () => response({ models: [
-    { name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent'] },
-    { name: 'models/gemini-3.5-transcribe', supportedGenerationMethods: ['generateContent'] },
-    { name: 'models/gemini-flash-image', supportedGenerationMethods: ['generateContent'] },
-    { name: 'models/gemini-flash-live', supportedGenerationMethods: ['generateContent'] },
-  ] }), async () => {
-    const data = await ai.catalogue('gemini', 'fixture-key');
-    assert.deepEqual(data.models, ['gemini-3.6-flash']);
-    assert.deepEqual(data.speechModels, ['gemini-3.5-transcribe', 'gemini-3.6-flash']);
-  });
+  await withFetch(
+    async () =>
+      response({
+        models: [
+          { name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent'] },
+          { name: 'models/gemini-3.5-transcribe', supportedGenerationMethods: ['generateContent'] },
+          { name: 'models/gemini-flash-image', supportedGenerationMethods: ['generateContent'] },
+          { name: 'models/gemini-flash-live', supportedGenerationMethods: ['generateContent'] },
+        ],
+      }),
+    async () => {
+      const data = await ai.catalogue('gemini', 'fixture-key');
+      assert.deepEqual(data.models, ['gemini-3.6-flash']);
+      assert.deepEqual(data.speechModels, ['gemini-3.5-transcribe', 'gemini-3.6-flash']);
+    },
+  );
 });
 test('blocked Gemini responses never reach the command executor', async () => {
-  await withFetch(async () => response({ candidates: [{ finishReason: 'SAFETY', content: { parts: [{ text: '{"kind":"system","command":"volume","value":100}' }] } }] }), async () => {
-    await assert.rejects(ai.plan('test', { provider: 'gemini', model: 'gemini-3.6-flash' }, 'fixture-key'), /Rephrase/);
-  });
+  await withFetch(
+    async () =>
+      response({
+        candidates: [
+          {
+            finishReason: 'SAFETY',
+            content: { parts: [{ text: '{"kind":"system","command":"volume","value":100}' }] },
+          },
+        ],
+      }),
+    async () => {
+      await assert.rejects(
+        ai.plan('test', { provider: 'gemini', model: 'gemini-3.6-flash' }, 'fixture-key'),
+        /Rephrase/,
+      );
+    },
+  );
 });
 test('Gemini ignores thought parts and accepts a safe textual answer', async () => {
   await withFetch(

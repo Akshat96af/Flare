@@ -36,9 +36,12 @@ test('sharing is opt-in, token protected, read-only, and stops immediately', asy
   assert.equal((await fetch(new URL('/wrong', status.url))).status, 404);
   assert.equal((await fetch(status.url, { method: 'POST' })).status, 405);
   const foreignHost = await new Promise((resolve, reject) => {
-    require('node:http').get(status.url, { headers: { Host: 'attacker.invalid' } }, response => {
-      response.resume(); resolve(response.statusCode);
-    }).on('error', reject);
+    require('node:http')
+      .get(status.url, { headers: { Host: 'attacker.invalid' } }, (response) => {
+        response.resume();
+        resolve(response.statusCode);
+      })
+      .on('error', reject);
   });
   assert.equal(foreignHost, 404);
   assert.equal((await fetch(status.url, { method: 'HEAD' })).status, 200);
@@ -68,4 +71,17 @@ test('directories and stale selections are rejected', async (t) => {
   const old = await share.select(file);
   await share.select(file);
   await assert.rejects(share.start(old.id, '127.0.0.1'), /Choose/);
+});
+
+test('stop cancels a share that is still being prepared', async (t) => {
+  const { share, file } = await fixture(t);
+  const selected = await share.select(file);
+  const starting = share.start(selected.id, '127.0.0.1');
+  const result = starting.then(
+    () => 'started',
+    () => 'cancelled',
+  );
+  await share.stop();
+  assert.equal(await result, 'cancelled');
+  assert.equal(share.status().active, false);
 });

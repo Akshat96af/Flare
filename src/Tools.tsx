@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Image,
   FileText,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { bridge, basename, fileSize } from './bridge';
 import type { Operation } from './types';
+import { usePanelMotion } from './usePanelMotion';
 const tools = [
   ['image', 'Convert images', Image],
   ['compress', 'Compress images', Archive],
@@ -135,16 +136,39 @@ export default function Tools({
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const folderTool = ['organize', 'cleanup'].includes(tool);
+  const panel = useRef<HTMLElement>(null);
+  usePanelMotion(panel, tool);
+  const sequence = useRef(0),
+    pending = useRef(false),
+    mounted = useRef(true);
+  const invalidate = () => {
+    sequence.current++;
+    pending.current = false;
+    setBusy(false);
+  };
+  useEffect(() => {
+    mounted.current = true;
+    const remove = bridge.on('dismiss', invalidate);
+    return () => {
+      mounted.current = false;
+      sequence.current++;
+      remove();
+    };
+  }, []);
   const choose = async (kind: string) => {
+    const id = ++sequence.current;
     try {
       setError('');
       const chosen = await bridge.call('pick', { kind });
-      if (chosen.length) setFiles(chosen);
+      if (mounted.current && id === sequence.current && chosen.length) setFiles(chosen);
     } catch (e) {
       setError((e as Error).message);
     }
   };
   const create = async () => {
+    if (pending.current) return;
+    pending.current = true;
+    const id = ++sequence.current;
     setBusy(true);
     setError('');
     try {
@@ -159,15 +183,19 @@ export default function Tools({
         pages: pages.split(',').map((x) => Number(x.trim())),
         mode,
       };
-      onPlan(await bridge.call('tool-plan', options));
+      const plan = await bridge.call('tool-plan', options);
+      if (mounted.current && id === sequence.current) onPlan(plan);
     } catch (e) {
-      setError((e as Error).message);
+      if (mounted.current && id === sequence.current) setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (mounted.current && id === sequence.current) {
+        pending.current = false;
+        setBusy(false);
+      }
     }
   };
   return (
-    <section className="tools-panel" key={tool}>
+    <section className="tools-panel" key={tool} ref={panel}>
       <div className="section-heading">
         <div className="heading-group">
           {tool && (
@@ -175,6 +203,7 @@ export default function Tools({
               className="icon-button"
               title="All tools"
               onClick={() => {
+                invalidate();
                 setTool('');
                 setFiles([]);
               }}
@@ -202,6 +231,7 @@ export default function Tools({
         <>
           <button
             className="file-drop"
+            disabled={busy}
             onClick={() =>
               choose(
                 folderTool
@@ -225,10 +255,13 @@ export default function Tools({
               Save to
               <button
                 className="folder-choice"
+                disabled={busy}
                 onClick={async () => {
+                  const id = ++sequence.current;
                   try {
                     const [folder] = await bridge.call('pick', { kind: 'folder' });
-                    if (folder) setDestination(folder);
+                    if (mounted.current && id === sequence.current && folder)
+                      setDestination(folder);
                   } catch (e) {
                     setError((e as Error).message);
                   }

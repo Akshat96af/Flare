@@ -31,13 +31,28 @@ const AxeBuilder = require('@axe-core/playwright').default;
     // Intercept only this isolated test process. No app launches, mutations or AI calls.
     await instance.evaluate(({ ipcMain }) => {
       const original = ipcMain._invokeHandlers.get('flare:call');
-      global.uiFixture = { opened: [], previews: 0, searches: [], release: null };
+      global.uiFixture = { opened: [], previews: 0, searches: [], plans: 0, release: null };
       global.fetch = async () => {
         throw new Error('Network disabled in UI smoke test');
       };
       ipcMain.removeHandler('flare:call');
       ipcMain.handle('flare:call', async (event, method, data) => {
         const state = global.uiFixture;
+        if (method === 'pick') return ['fixture'];
+        if (method === 'tool-plan') {
+          state.plans++;
+          await new Promise((resolve) => {
+            state.release = resolve;
+          });
+          return {
+            id: 'late-plan',
+            title: 'Late file plan',
+            type: 'convert',
+            status: 'preview',
+            created: Date.now(),
+            items: [],
+          };
+        }
         if (method === 'open') {
           state.opened.push(data);
           return { message: 'Fixture opened' };
@@ -99,8 +114,82 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await settings.focus();
     await page.keyboard.press('Enter');
     await page.getByRole('heading', { name: 'Settings', exact: true }).waitFor();
+    const navigationMotion = await page
+      .locator('.settings-panel')
+      .evaluate((panel) =>
+        panel
+          .getAnimations()
+          .some(
+            (animation) =>
+              animation.effect.getTiming().duration === 560 &&
+              animation.effect.getKeyframes().some((frame) => frame.transform?.includes('32px')),
+          ),
+      );
+    assert.equal(
+      navigationMotion,
+      true,
+      'Panel navigation uses the new directional 560ms entrance',
+    );
+    const cascade = await page.evaluate(() =>
+      document
+        .getAnimations()
+        .filter((a) => a.id === 'flare-panel')
+        .map((a) => a.effect.getTiming().delay),
+    );
+    assert.ok(
+      cascade.some((delay) => delay >= 144),
+      'Content enters in a bounded cascade',
+    );
+    for (const time of [0, 180, 360, 680]) {
+      await page.evaluate((time) => {
+        document
+          .getAnimations()
+          .filter((a) => a.id === 'flare-panel')
+          .forEach((a) => {
+            a.pause();
+            a.currentTime = time;
+          });
+      }, time);
+      await page.screenshot({ path: path.join(directory, `motion-${time}.png`) });
+    }
+    await page.evaluate(() =>
+      document
+        .getAnimations()
+        .filter((a) => a.id === 'flare-panel')
+        .forEach((a) => a.finish()),
+    );
+    const sharp = require('sharp');
+    const firstFrame = await sharp(path.join(directory, 'motion-0.png')).raw().toBuffer();
+    const lastFrame = await sharp(path.join(directory, 'motion-680.png')).raw().toBuffer();
+    assert.equal(firstFrame.length, lastFrame.length);
+    let changedPixels = 0;
+    for (let i = 0; i < firstFrame.length; i += 4) {
+      if (Math.abs(firstFrame[i] - lastFrame[i]) > 12) changedPixels++;
+    }
+    assert.ok(
+      changedPixels > 5000,
+      'Navigation visibly changes rendered pixels, not just animation metadata',
+    );
+    checks.push(
+      'Directional navigation and staggered content are present at sampled animation frames',
+    );
     assert.equal(await instance.evaluate(() => global.uiFixture.opened.length), 0);
     checks.push('Enter on a toolbar control does not also open a search result');
+    await page.getByTitle('Close settings', { exact: true }).click();
+    await page.getByRole('button', { name: 'File tools', exact: true }).click();
+    await page.getByRole('button', { name: 'Convert images', exact: true }).click();
+    await page.getByRole('button', { name: 'Choose images', exact: true }).click();
+    await page.locator('.folder-choice').click();
+    await page.getByRole('button', { name: 'Preview changes', exact: true }).click();
+    await expect.poll(() => instance.evaluate(() => global.uiFixture.plans)).toBe(1);
+    await page.getByTitle('Close tools').click();
+    await release();
+    await settle();
+    assert.equal(await page.locator('.plan-panel').count(), 0);
+    checks.push(
+      'A dismissed file preview cannot reopen the plan or auto-run after its response arrives',
+    );
+    await settings.click();
     await page.getByTitle('Close settings', { exact: true }).click();
     await page.getByRole('option').waitFor();
     await input.fill('second');
@@ -175,6 +264,22 @@ const AxeBuilder = require('@axe-core/playwright').default;
     });
     assert.equal(glassFlash, true, 'Click illuminates only the glass edge, not the whole control');
     await settle();
+    await page.mouse.move(0, 0);
+    await page.getByRole('button', { name: 'light theme' }).hover();
+    await settle();
+    const lensBefore = await page.locator('.hover-lens').boundingBox();
+    await page.getByRole('button', { name: 'dark theme' }).hover();
+    assert.equal(
+      await page
+        .locator('.hover-lens')
+        .evaluate((node) => node.getAnimations().some((a) => a.id === 'flare-hover')),
+      true,
+    );
+    await settle();
+    const lensAfter = await page.locator('.hover-lens').boundingBox();
+    assert.ok(lensAfter.x > lensBefore.x, 'Shared hover lens travels to the next control');
+    await page.screenshot({ path: path.join(directory, '05-hover-lens.png') });
+    await page.mouse.move(0, 0);
     await expect
       .poll(() =>
         page
@@ -200,7 +305,35 @@ const AxeBuilder = require('@axe-core/playwright').default;
       false,
       'Reduced motion disables JS feedback',
     );
+    await page.getByRole('button', { name: 'light theme' }).hover();
+    assert.equal(
+      await page.locator('.hover-lens').evaluate((node) => getComputedStyle(node).display),
+      'none',
+    );
+    await page.evaluate(() => window.dispatchEvent(new Event('flare:activate')));
+    assert.equal(
+      await page.evaluate(() => document.getAnimations().some((a) => a.id === 'flare-launch')),
+      false,
+    );
+    await page.mouse.move(0, 0);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
+    const openedMotion = await page.evaluate(() => {
+      window.dispatchEvent(new Event('flare:activate'));
+      return document.getAnimations().some((a) => a.id === 'flare-launch');
+    });
+    assert.equal(openedMotion, true, 'Activation replays the launcher entrance');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.getAnimations().some((a) => a.id.startsWith('flare-'))),
+      )
+      .toBe(false);
+    await page.emulateMedia({ reducedMotion: 'no-preference', forcedColors: 'active' });
+    assert.equal(
+      await page.locator('.hover-lens').evaluate((node) => getComputedStyle(node).display),
+      'none',
+    );
+    await page.emulateMedia({ forcedColors: 'none' });
     await instance.evaluate(({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0];
       win.setResizable(true);

@@ -38,6 +38,8 @@ import Voice from './Voice';
 import QuickShare from './QuickShare';
 import GlassRail from './GlassRail';
 import { usePressFeedback } from './usePressFeedback';
+import { useLauncherMotion, usePanelMotion } from './usePanelMotion';
+import HoverLens from './HoverLens';
 
 const icons: Record<string, any> = {
   app: AppWindow,
@@ -84,7 +86,6 @@ export default function App() {
     aiSequence = useRef(0),
     aiPending = useRef(false),
     previewSequence = useRef(0),
-    entrance = useRef<Animation | null>(null),
     viewRef = useRef(view),
     busyRef = useRef(busy);
   const searchContext = query + '\0' + kind;
@@ -92,6 +93,8 @@ export default function App() {
   const searching =
     view === 'search' && !!query.trim() && (searchPending || resultContext !== searchContext);
   usePressFeedback(panel);
+  usePanelMotion(panel, view);
+  useLauncherMotion(panel);
   viewRef.current = view;
   busyRef.current = busy;
   useEffect(() => {
@@ -121,22 +124,13 @@ export default function App() {
           setAiAnswer('');
           setSettingsPage('general');
         }
-        entrance.current?.cancel();
-        if (!matchMedia('(prefers-reduced-motion: reduce)').matches)
-          entrance.current =
-            panel.current?.animate(
-              [
-                { opacity: 0, transform: 'translateY(-8px) scale(.985)' },
-                { opacity: 1, transform: 'translateY(0) scale(1)' },
-              ],
-              { duration: 220, easing: 'cubic-bezier(.23,1,.32,1)' },
-            ) || null;
+        window.dispatchEvent(new Event('flare:activate'));
         input.current?.focus();
       }),
       bridge.on('dismiss', () => {
         sequence.current++;
         previewSequence.current++;
-        entrance.current?.cancel();
+        window.dispatchEvent(new Event('flare:dismiss'));
         setPreviewBusy(false);
         setSearching(false);
         aiSequence.current++;
@@ -158,7 +152,6 @@ export default function App() {
     ];
     return () => {
       disposers.forEach((dispose) => dispose());
-      entrance.current?.cancel();
     };
   }, []);
   useEffect(() => {
@@ -422,6 +415,7 @@ export default function App() {
   return (
     <main className="workspace" onKeyDown={keyDown}>
       <div ref={panel} className={'launcher ' + (view === 'voice' ? 'voice-active' : '')}>
+        <HoverLens root={panel} view={view} />
         <div className="input-rail" style={{ transform: `scaleX(${hold || 0})` }} />
         <GlassRail enabled={settings?.glass !== false}>
           <div className="brand-mark">

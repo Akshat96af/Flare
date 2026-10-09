@@ -42,6 +42,7 @@ export default function Voice({
       stopping = false,
       mode = 'preparing',
       ready = false,
+      failed = false,
       recorded: Promise<void> | undefined;
     let uploading = false,
       signalState = '';
@@ -75,6 +76,7 @@ export default function Voice({
       if (!active) return;
       clearTimeout(preparationTimer);
       stopping = true;
+      failed = true;
       if (active) {
         setError(message);
         setState('error');
@@ -126,7 +128,7 @@ export default function Voice({
       else cloud();
     };
     const listening = () => {
-      if (!active || ready) return;
+      if (!active || ready || failed) return;
       ready = true;
       clearTimeout(preparationTimer);
       started = lastSound = Date.now();
@@ -170,7 +172,7 @@ export default function Voice({
             ...(mode === 'cloud' && device !== 'default' ? { deviceId: { exact: device } } : {}),
           },
         });
-        if (!active) {
+        if (!active || failed) {
           await stopRecording();
           return;
         }
@@ -195,15 +197,17 @@ export default function Voice({
           .catch(() => {});
         context = new AudioContext();
         await context.resume();
-        if (!active) {
+        if (!active || failed) {
           await stopRecording();
           return;
         }
         const analyser = context.createAnalyser();
         analyser.fftSize = 512;
         context.createMediaStreamSource(stream).connect(analyser);
-        const data = new Uint8Array(analyser.frequencyBinCount);
         const waveform = new Float32Array(analyser.fftSize);
+        const meterBars = Array.from(bars.current?.querySelectorAll<HTMLElement>('i') || []);
+        const levels = meterBars.map(() => 0.12);
+        const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
         const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus'
           : 'audio/webm';
@@ -217,7 +221,6 @@ export default function Voice({
         if (mode === 'cloud') listening();
         const draw = () => {
           if (!active || (stopping && ready)) return;
-          analyser.getByteFrequencyData(data);
           analyser.getFloatTimeDomainData(waveform);
           let sum = 0;
           waveform.forEach((x) => (sum += x * x));
@@ -238,8 +241,14 @@ export default function Voice({
             signalState = nextSignal;
             setSignal(nextSignal);
           }
-          bars.current?.querySelectorAll<HTMLElement>('i').forEach((bar, i) => {
-            bar.style.transform = `scaleY(${0.12 + (data[Math.floor((i * data.length) / 25)] / 255) * 1.8})`;
+          meterBars.forEach((bar, i) => {
+            const start = Math.floor((i * waveform.length) / meterBars.length);
+            const end = Math.floor(((i + 1) * waveform.length) / meterBars.length);
+            let energy = 0;
+            for (let sample = start; sample < end; sample++) energy += waveform[sample] ** 2;
+            const target = 0.12 + Math.min(1.1, Math.sqrt(energy / (end - start)) * 40);
+            levels[i] += (target - levels[i]) * 0.26;
+            bar.style.transform = `scaleY(${reducedMotion.matches ? 0.12 : levels[i]})`;
           });
           if (
             ready &&
@@ -268,12 +277,13 @@ export default function Voice({
               );
             await finish(transcript);
           } catch (e) {
-            if (!active) return;
+            if (!active || failed) return;
             if (!settings.ai.speechCloud) {
               fail((e as Error).message);
               return;
             }
             mode = 'cloud';
+            setEngine(`${settings.ai.provider === 'gemini' ? 'Gemini' : 'OpenAI'} transcription`);
             if (stopping || heard) await cloud();
             else listening();
           }

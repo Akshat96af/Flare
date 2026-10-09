@@ -1,6 +1,10 @@
 .share-panel {
   border-top: 1px solid var(--line);
 }
+.share-panel > .section-heading {
+  padding: 18px 22px 0;
+  margin-bottom: 14px;
+}
 .share-content {
   padding: 4px 22px 22px;
   max-height: var(--content-height);

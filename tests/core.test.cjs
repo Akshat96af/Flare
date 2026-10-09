@@ -98,6 +98,51 @@ test('organization is journaled, survives restart, and undo restores originals',
   assert.equal(await fs.readFile(path.join(dir, 'note.txt'), 'utf8'), 'original');
   store.close();
 });
+
+test('operation lock covers asynchronous preflight and releases after invalid selection', async () => {
+  const dir = await fixture('concurrent-operation');
+  await fs.writeFile(path.join(dir, 'note.txt'), 'original');
+  const store = createStore(path.join(dir, 'state'));
+  try {
+    const ops = new Operations(store, () => {});
+    const p = await ops.planFolder(dir, 'organize');
+    await assert.rejects(ops.execute(p.id, undefined, []), /Select/);
+    assert.equal(ops.running, false);
+    const first = ops.execute(p.id);
+    const second = ops.execute(p.id).then(
+      () => 'unexpected success',
+      (error) => error.message,
+    );
+    await first;
+    assert.match(await second, /already running/);
+    assert.equal(ops.running, false);
+    assert.equal(await fs.readFile(p.items[0].to, 'utf8'), 'original');
+  } finally {
+    store.close();
+  }
+});
+
+test('failed preflight retains the original preview selection for retry', async () => {
+  const dir = await fixture('retry-selection');
+  await fs.writeFile(path.join(dir, 'first.txt'), 'first');
+  await fs.writeFile(path.join(dir, 'second.txt'), 'second');
+  const store = createStore(path.join(dir, 'state'));
+  const original = fs.statfs;
+  try {
+    const ops = new Operations(store, () => {});
+    const plan = await ops.planFolder(dir, 'organize');
+    fs.statfs = async () => ({ bavail: 0, bsize: 4096 });
+    await assert.rejects(ops.execute(plan.id, undefined, [1]), /free space/);
+    fs.statfs = original;
+    assert.equal(ops.plans.get(plan.id).items.length, 2);
+    const result = await ops.execute(plan.id, undefined, [0]);
+    assert.equal(path.basename(result.items[0].from), 'first.txt');
+    await fs.access(path.join(dir, 'second.txt'));
+  } finally {
+    fs.statfs = original;
+    store.close();
+  }
+});
 test('undo refuses to overwrite a later edit', async () => {
   const dir = await fixture('conflict');
   await fs.writeFile(path.join(dir, 'note.txt'), 'original');
