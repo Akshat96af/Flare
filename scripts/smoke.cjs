@@ -51,56 +51,40 @@ const { expect } = require('@playwright/test');
     await audit('empty');
     assert.equal(await page.locator('html').getAttribute('data-glass'), 'on');
     const rail = await page.locator('.search-bar').boundingBox();
-    await page.mouse.move(0, 0);
+    const footer = await page.locator('.launcher-footer').boundingBox();
+    await page.mouse.move(footer.x + footer.width / 2, footer.y + footer.height / 2);
+    const surface = page.locator('.rail-aperture');
+    const settled = () =>
+      page.waitForFunction(
+        () => document.querySelector('.search-bar').dataset.hoverMotion === 'idle',
+      );
+    await settled();
+    const resting = await surface.evaluate((node) => getComputedStyle(node).opacity);
     await page.mouse.move(rail.x + 80, rail.y + rail.height / 2, { steps: 5 });
-    await page.waitForFunction(
-      () =>
-        Number(getComputedStyle(document.querySelector('.glass-contour')).opacity) === 1 &&
-        document.querySelector('.glass-contour-near').style.transform !== '',
-    );
-    const firstHighlight = await page
-      .locator('.glass-contour-near')
-      .evaluate((node) => node.style.transform);
+    await settled();
+    const firstHighlight = await surface.evaluate((node) => getComputedStyle(node).opacity);
+    assert.notEqual(firstHighlight, resting);
     await page.mouse.move(rail.x + rail.width - 80, rail.y + rail.height / 2, { steps: 5 });
-    await page.waitForFunction(
-      (previous) => document.querySelector('.glass-contour-near').style.transform !== previous,
-      firstHighlight,
-    );
+    await settled();
+    assert.equal(await surface.evaluate((node) => getComputedStyle(node).opacity), firstHighlight);
     await page.screenshot({ path: path.join(directory, '00-glass-reflection.png') });
     assert.equal(
       await page.locator('.glass-sheen, .glass-wake').count(),
       0,
       'No sweeping overlays remain',
     );
-    assert.ok(
-      await page
-        .locator('.glass-contour-near')
-        .evaluate((node) => node.getBoundingClientRect().height <= 20),
-      'Reflection stays at the rim, away from search text',
+    assert.deepEqual(
+      await page.locator('.search-bar').boundingBox(),
+      rail,
+      'Hover bounds stay fixed',
     );
-    await page.waitForFunction(
-      () => document.querySelector('.glass-contour-near').style.willChange === '',
-    );
-    const resting = await page
-      .locator('.glass-contour-near')
-      .evaluate((node) => node.style.transform);
-    await page.waitForTimeout(100);
-    assert.equal(
-      await page.locator('.glass-contour-near').evaluate((node) => node.style.transform),
-      resting,
-      'Reflection stops moving at rest',
-    );
-    await page.mouse.move(0, 0);
-    await page.waitForFunction(
-      () => document.querySelector('.glass-contour').style.opacity === '0',
-    );
+    await page.mouse.move(footer.x + footer.width / 2, footer.y + footer.height / 2);
+    await settled();
+    assert.equal(await surface.evaluate((node) => getComputedStyle(node).opacity), resting);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.mouse.move(rail.x + 80, rail.y + rail.height / 2);
-    assert.equal(
-      await page.locator('.glass-contour').evaluate((node) => getComputedStyle(node).display),
-      'none',
-    );
-    await page.mouse.move(0, 0);
+    assert.equal(await surface.evaluate((node) => getComputedStyle(node).opacity), resting);
+    await page.mouse.move(footer.x + footer.width / 2, footer.y + footer.height / 2);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.screenshot({ path: path.join(directory, '01-empty-dark.png') });
     if (process.env.FLARE_PUBLIC_SHOTS) {
@@ -365,7 +349,7 @@ const { expect } = require('@playwright/test');
         height: innerHeight,
         scrollX,
         scrollY,
-        contour: document.querySelector('.glass-contour')?.getAttribute('style'),
+        surface: document.querySelector('.rail-aperture')?.getAttribute('style'),
         search: document.querySelector('.search-bar')?.getBoundingClientRect().toJSON(),
         heading: document.querySelector('h2')?.getBoundingClientRect().toJSON(),
       })),
