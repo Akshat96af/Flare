@@ -75,8 +75,24 @@
 }
 .search-bar {
   overflow: clip;
+  padding: 0;
+  gap: 0;
+  perspective: 1000px;
 }
-:root[data-glass='on'] .search-bar {
+.search-surface {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 19px 21px;
+  width: 100%;
+  height: 100%;
+  border-radius: 19px 19px 0 0;
+  transform-origin: 50% 50%;
+  overflow: clip;
+  isolation: isolate;
+}
+:root[data-glass='on'] .search-surface {
   background:
     linear-gradient(175deg, var(--glass-highlight), transparent 34%),
     linear-gradient(108deg, transparent 18%, var(--glass-control) 46%, transparent 68%),
@@ -102,41 +118,34 @@
 :root[data-glass='on'] .search-bar:focus-within::after {
   opacity: 0.65;
 }
-.glass-contour {
+.rail-depth {
   position: absolute;
-  inset: 0;
-  overflow: clip;
-  border-radius: inherit;
+  inset: 7px 8px 2px;
+  border-radius: 13px;
   pointer-events: none;
   opacity: 0;
+  background: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
 }
-.glass-contour-near,
-.glass-contour-far {
+.rail-light {
   position: absolute;
-  left: 6%;
-  right: 6%;
+  inset: 0;
   pointer-events: none;
-  transform-origin: 50% 50%;
-  mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  opacity: 0;
+  z-index: -1;
+  mask-image: linear-gradient(180deg, #000, transparent 42%, transparent 68%, #000);
 }
-.glass-contour-near {
-  top: 2px;
-  height: 18px;
-  border-radius: 50% 50% 0 0 / 6px 6px 0 0;
-  border-top: 1px solid var(--glass-edge);
-  background: linear-gradient(180deg, var(--glass-reflection), transparent);
-  box-shadow: inset 0 2px 1px -2px var(--glass-highlight);
+.rail-light-left {
+  background: linear-gradient(120deg, var(--glass-highlight), transparent 60%);
 }
-.glass-contour-far {
-  bottom: 2px;
-  height: 14px;
-  border-radius: 0 0 50% 50% / 0 0 5px 5px;
-  border-bottom: 1px solid var(--glass-cool-edge);
-  background: linear-gradient(0deg, var(--glass-reflection), transparent);
-  box-shadow: inset 0 -2px 1px -2px var(--glass-highlight);
+.rail-light-right {
+  background: linear-gradient(240deg, var(--glass-cool-edge), transparent 60%);
 }
-.search-bar > :not(.glass-contour) {
-  position: relative;
+@media (max-width: 560px) {
+  .search-surface {
+    padding: 15px;
+    gap: 8px;
+  }
 }
 .hover-lens {
   position: absolute;
@@ -348,7 +357,7 @@ button > svg {
 :root[data-glass='on'] .voice-visual[data-state='transcribing'] .voice-core::before {
   animation: spin 7s linear infinite;
 }
-:root[data-glass='off'] :is(.hover-lens, .glass-contour) {
+:root[data-glass='off'] :is(.hover-lens, .rail-light, .rail-depth) {
   display: none;
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
@@ -356,7 +365,8 @@ button > svg {
     background: var(--surface);
     border-color: var(--text);
   }
-  .glass-contour,
+  .rail-light,
+  .rail-depth,
   .hover-lens,
   .launcher::before,
   .launcher::after,
@@ -365,13 +375,14 @@ button > svg {
   .search-bar::after {
     display: none !important;
   }
-  :root[data-glass='on'] .search-bar,
+  :root[data-glass='on'] .search-surface,
   :root[data-glass='on'] .launcher-footer {
     background: var(--surface);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .glass-contour,
+  .rail-light,
+  .rail-depth,
   .hover-lens {
     display: none;
   }
@@ -405,14 +416,15 @@ button > svg {
   .launcher::after,
   button::after,
   .voice-core::before,
-  .glass-contour,
+  .rail-light,
+  .rail-depth,
   .hover-lens,
   .glass-selection,
   .search-bar::after {
     display: none;
   }
   :root[data-glass='on'] .launcher,
-  :root[data-glass='on'] .search-bar,
+  :root[data-glass='on'] .search-surface,
   :root[data-glass='on'] .launcher-footer {
     background: Canvas;
   }
