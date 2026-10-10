@@ -26,6 +26,14 @@ const { chordHeld, foregroundBounds, powershell, scriptPath } = require('./nativ
 const ai = require('./ai.cjs');
 const { createHold } = require('./shortcut.cjs');
 const { QuickShare } = require('./share.cjs');
+const { openService } = require('./services.cjs');
+const { resolveMusic, openTrack } = require('./music.cjs');
+const { randomUUID } = require('node:crypto');
+const tracks = new Map();
+const external = {
+  hasProtocol: (url) => !!app.getApplicationNameForProtocol(url),
+  openExternal: (url) => shell.openExternal(url),
+};
 
 const isolated = process.env.FLARE_DATA_DIR;
 const portable = process.argv.includes('--portable') || !!process.env.PORTABLE_EXECUTABLE_DIR;
@@ -116,6 +124,7 @@ function register(shortcut) {
   return ok;
 }
 function hideLauncher() {
+  tracks.clear();
   holding?.hold.cancel();
   send('hold', { progress: 0 });
   stopVoice(true);
@@ -300,6 +309,25 @@ async function query(q, kind) {
   );
 }
 async function executeIntent(intent) {
+  if (intent.kind === 'service') {
+    const result = await openService(intent, external);
+    hideLauncher();
+    return result;
+  }
+  if (intent.kind === 'launch') {
+    const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const aliases = { vscode: 'visualstudiocode', chrome: 'googlechrome', edge: 'microsoftedge' };
+    const name = aliases[normalize(intent.query)] || normalize(intent.query);
+    const matches = store.db
+      .prepare("SELECT id,title FROM entries WHERE kind='app'")
+      .all()
+      .filter((item) => normalize(item.title) === name);
+    if (matches.length === 1) return dispatch('open', { id: matches[0].id });
+    const site = require('./search.cjs').websites.find(([title]) => normalize(title) === name);
+    if (!matches.length && site)
+      return executeIntent({ kind: 'website', url: site[1], title: site[0] });
+    return { intent: { kind: 'search', query: intent.query } };
+  }
   if (intent.kind === 'system') {
     await powershell(intent.command, { value: intent.value });
     return { message: `${intent.command} set to ${intent.value}%` };
@@ -420,6 +448,15 @@ async function dispatch(method, data = {}) {
     case 'search':
       return query(data.query, data.kind || 'all');
     case 'open': {
+      if (data.id?.startsWith('track:')) {
+        const track = tracks.get(data.id);
+        tracks.delete(data.id);
+        if (!track || track.expires < Date.now())
+          throw new Error('This song link expired. Ask again.');
+        const result = await openTrack(track, external);
+        hideLauncher();
+        return result;
+      }
       if (data.intent) return executeIntent(require('./commands.cjs').validateIntent(data.intent));
       if (data.id?.startsWith('command:')) {
         const intent = interpretLocal(data.id.slice(8));
@@ -532,6 +569,7 @@ async function dispatch(method, data = {}) {
           { provider: data.provider, model: data.model },
           data.key || secret(data.provider),
           controller.signal,
+          { retries: 0 },
         );
         return { model: data.model, elapsedMs: Date.now() - started };
       } finally {
@@ -553,7 +591,7 @@ async function dispatch(method, data = {}) {
       return true;
     case 'ai-save': {
       if (
-        !['off', 'openai', 'gemini', 'anthropic', 'local'].includes(data.provider) ||
+        !['off', 'openai', 'gemini', 'anthropic', 'local', 'openrouter'].includes(data.provider) ||
         typeof data.model !== 'string' ||
         data.model.length > 150
       )
@@ -597,6 +635,9 @@ async function dispatch(method, data = {}) {
       const controller = new AbortController();
       aiRequest = controller;
       try {
+        const local = interpretLocal(data.query);
+        if (local && ['music', 'service', 'launch', 'system', 'tool'].includes(local.kind))
+          return local;
         return await ai.plan(data.query, settings, secret(settings.provider), controller.signal);
       } finally {
         if (aiRequest === controller) aiRequest = null;
@@ -604,7 +645,26 @@ async function dispatch(method, data = {}) {
     }
     case 'ai-cancel':
       aiRequest?.abort();
+      tracks.clear();
       return true;
+    case 'music-resolve': {
+      const intent = require('./commands.cjs').validateIntent(data);
+      if (intent.kind !== 'music') throw new Error('Choose a song first.');
+      aiRequest?.abort();
+      const controller = new AbortController();
+      aiRequest = controller;
+      tracks.clear();
+      try {
+        const track = await resolveMusic(intent, controller.signal);
+        controller.signal.throwIfAborted();
+        if (track.kind === 'answer') return track;
+        const id = 'track:' + randomUUID();
+        tracks.set(id, { ...track, expires: Date.now() + 60000 });
+        return { kind: 'track', id };
+      } finally {
+        if (aiRequest === controller) aiRequest = null;
+      }
+    }
     case 'tool-plan': {
       if (['organize', 'cleanup'].includes(data.tool)) {
         if (!granted.has(data.folder)) throw new Error('Choose a folder first.');

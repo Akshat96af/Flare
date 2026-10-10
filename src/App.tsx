@@ -272,7 +272,26 @@ export default function App() {
     }
   };
   const handleIntent = async (intent: any) => {
-    if (intent?.kind === 'tool') {
+    if (intent?.kind === 'music') {
+      const id = ++aiSequence.current;
+      aiPending.current = true;
+      setAiBusy(true);
+      setView('search');
+      try {
+        const resolved = await bridge.call('music-resolve', intent);
+        if (id !== aiSequence.current) return;
+        if (resolved.kind === 'answer') setAiAnswer(resolved.text);
+        else {
+          const result = await bridge.call('open', { id: resolved.id });
+          setNotice(result.message || '');
+        }
+      } finally {
+        if (id === aiSequence.current) {
+          aiPending.current = false;
+          setAiBusy(false);
+        }
+      }
+    } else if (intent?.kind === 'tool') {
       setTool(intent.tool);
       setToolMode(intent.mode || 'type');
       setView('tools');
@@ -286,6 +305,7 @@ export default function App() {
       setAiAnswer(intent.text);
     } else if (intent) {
       const value = await bridge.call('open', { intent });
+      if (value.intent?.kind === 'search') await handleIntent(value.intent);
       setNotice(value.message || '');
     }
   };

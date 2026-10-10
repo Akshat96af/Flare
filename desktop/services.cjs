@@ -1,5 +1,6 @@
 const services = {
   spotify: { title: 'Spotify', home: 'https://open.spotify.com', protocol: 'spotify:' },
+  applemusic: { title: 'Apple Music', home: 'https://music.apple.com', protocol: 'music:' },
   youtube: { title: 'YouTube', home: 'https://www.youtube.com' },
   google: { title: 'Google', home: 'https://www.google.com' },
 };
@@ -8,11 +9,12 @@ function serviceTarget(service, query = '') {
   if (typeof query !== 'string' || query.length > 500 || /[\u0000-\u001f]/.test(query))
     throw new Error('Keep the search below 500 characters.');
   query = query.trim();
+  if (query && ['spotify', 'applemusic'].includes(service))
+    throw new Error('Specify a song title for an exact music link.');
   const config = services[service];
   const url = new URL(config.home);
   if (query) {
-    if (service === 'spotify') url.pathname = '/search/' + encodeURIComponent(query);
-    else if (service === 'youtube') {
+    if (service === 'youtube') {
       url.pathname = '/results';
       url.searchParams.set('search_query', query);
     } else {
@@ -23,7 +25,7 @@ function serviceTarget(service, query = '') {
   return {
     title: config.title,
     web: url.href,
-    native: service === 'spotify' ? (query ? 'spotify:search:' + encodeURIComponent(query) : 'spotify:') : null,
+    native: config.protocol || null,
   };
 }
 async function openService(intent, { hasProtocol, openExternal }) {
@@ -32,11 +34,17 @@ async function openService(intent, { hasProtocol, openExternal }) {
     try {
       if (await hasProtocol(target.native)) {
         await openExternal(target.native);
-        return { message: 'Opened ' + target.title + (intent.query ? ' search in the app' : ' app') };
+        return {
+          message: 'Opened ' + target.title + (intent.query ? ' search in the app' : ' app'),
+        };
       }
-    } catch { /* Missing or broken protocol handlers fall back to the web player. */ }
+    } catch {
+      /* Missing or broken protocol handlers fall back to the web player. */
+    }
   }
   await openExternal(target.web);
-  return { message: 'Opened ' + target.title + (intent.query ? ' search on the web' : ' on the web') };
+  return {
+    message: 'Opened ' + target.title + (intent.query ? ' search on the web' : ' on the web'),
+  };
 }
 module.exports = { services, serviceTarget, openService };

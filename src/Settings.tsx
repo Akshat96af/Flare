@@ -426,6 +426,7 @@ export default function Settings({
               >
                 <option value="off">Keep AI off</option>
                 <option value="gemini">Google Gemini</option>
+                <option value="openrouter">OpenRouter (free models)</option>
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic Claude</option>
                 <option value="local">On this computer (Ollama)</option>
@@ -450,7 +451,11 @@ export default function Settings({
                         setSpeechModels([]);
                       }}
                     />
-                    <small>Encrypted on this computer. API usage is billed by your provider.</small>
+                    <small>
+                      {provider === 'openrouter'
+                        ? 'Free models only. Provider rate limits apply. Your key is encrypted on this computer.'
+                        : 'Encrypted on this computer. API usage is billed by your provider.'}
+                    </small>
                   </label>
                 ) : (
                   <div className="local-setup">
@@ -547,7 +552,7 @@ export default function Settings({
                     )}
                     {modelOptions.map((x) => (
                       <option key={x} value={x}>
-                        {x}
+                        {x === 'openrouter/free' ? 'Automatic (free models)' : x}
                       </option>
                     ))}
                   </select>

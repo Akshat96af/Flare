@@ -8,6 +8,7 @@ const { photoQuery } = require('./photos.cjs');
 
 const websites = [
   ['Spotify', 'https://open.spotify.com'],
+  ['Apple Music', 'https://music.apple.com'],
   ['YouTube', 'https://www.youtube.com'],
   ['Claude', 'https://claude.ai'],
   ['ChatGPT', 'https://chatgpt.com'],

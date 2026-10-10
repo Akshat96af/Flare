@@ -179,7 +179,7 @@ test('safe answers are bounded and do not expand the executable tool registry', 
   assert.throws(() => validateIntent({ kind: 'shell', command: 'erase C:' }));
 });
 
-test('unavailable models and busy providers give actionable errors without retries', async () => {
+test('unavailable models fail once and busy providers use bounded retries', async () => {
   for (const [status, message] of [
     [404, /another text model/],
     [503, /busy|temporarily unavailable/],
@@ -195,7 +195,7 @@ test('unavailable models and busy providers give actionable errors without retri
           ai.plan('hello', { provider: 'gemini', model: 'gemini-fixture-flash' }, 'fixture-key'),
           message,
         );
-        assert.equal(calls, 1);
+        assert.equal(calls, status === 503 ? 3 : 1);
       },
     );
   }
