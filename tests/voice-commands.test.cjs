@@ -2,7 +2,11 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { interpretLocal } = require('../desktop/commands.cjs');
 test('spoken punctuation and common percentages work without a model', () => {
-  assert.equal(interpretLocal('Open YouTube.').kind, 'website');
+  assert.deepEqual(interpretLocal('Open YouTube.'), {
+    kind: 'service',
+    service: 'youtube',
+    query: '',
+  });
   assert.deepEqual(interpretLocal('Set the volume to fifty percent.'), {
     kind: 'system',
     command: 'volume',

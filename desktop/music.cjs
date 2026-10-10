@@ -6,12 +6,21 @@ const normalized = (value) =>
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 function matchesSong(item, intent) {
-  const featured = [...item.trackName.matchAll(/\((?:feat\.?|ft\.?|featuring)\s+([^)]*)\)/gi)].map(match => match[1]);
+  const featured = [...item.trackName.matchAll(/\((?:feat\.?|ft\.?|featuring)\s+([^)]*)\)/gi)].map(
+    (match) => match[1],
+  );
   const title = item.trackName.replace(/\s*\((?:feat\.?|ft\.?|featuring)\s+[^)]*\)/gi, '');
-  const artists = [item.artistName, ...featured].flatMap(value => value.split(/\s*(?:,|&|\band\b|\bfeat\.?\s)\s*/i));
-  return normalized(title) === normalized(intent.title) && (!intent.artist || artists.some(artist => normalized(artist) === normalized(intent.artist)) || normalized(item.artistName) === normalized(intent.artist));
+  const artists = [item.artistName, ...featured].flatMap((value) =>
+    value.split(/\s*(?:,|&|\band\b|\bfeat\.?\s)\s*/i),
+  );
+  return (
+    normalized(title) === normalized(intent.title) &&
+    (!intent.artist ||
+      artists.some((artist) => normalized(artist) === normalized(intent.artist)) ||
+      normalized(item.artistName) === normalized(intent.artist))
+  );
 }
-async function json(url, signal) {
+async function read(url, signal) {
   const response = await fetch(url, {
     signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(15000)]),
     redirect: 'error',
@@ -35,10 +44,32 @@ async function json(url, signal) {
       if (size > 1000000) throw new Error('Music response is too large.');
       chunks.push(value);
     }
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    return Buffer.concat(chunks).toString('utf8');
   } finally {
     await reader.cancel();
   }
+}
+async function json(url, signal) {
+  return JSON.parse(await read(url, signal));
+}
+function spotifyFromPage(html, trackId) {
+  // Only read the public page's structured links; never execute its scripts.
+  const document = new XMLParser({
+    ignoreAttributes: false,
+    processEntities: false,
+    stopNodes: ['*.script', '*.style'],
+    unpairedTags: ['meta', 'link', 'img', 'input', 'br', 'hr'],
+  }).parse(html);
+  const script = [document.html?.body?.script]
+    .flat()
+    .find((item) => item?.['@_id'] === '__NEXT_DATA__');
+  const page = JSON.parse(script?.['#text'] || '{}').props?.pageProps?.pageData;
+  if (page?.entityUniqueId !== `itunes|song|${trackId}` || !Array.isArray(page.sections))
+    return null;
+  const link = page.sections
+    .flatMap((section) => (Array.isArray(section.links) ? section.links : []))
+    .find((item) => item.platform === 'spotify' && typeof item.url === 'string');
+  return link ? trackTarget('spotify', link.url) : null;
 }
 function trackTarget(service, value) {
   const url = new URL(value);
@@ -65,6 +96,9 @@ function trackTarget(service, value) {
   throw new Error('No verified song link is available for this player.');
 }
 async function resolveMusic(intent, signal) {
+  intent = require('./commands.cjs').validateIntent(intent);
+  if (intent.kind !== 'music') throw new Error('Choose a song first.');
+  signal?.throwIfAborted();
   const url = new URL('https://itunes.apple.com/search');
   url.search = new URLSearchParams({
     term: [intent.title, intent.artist].filter(Boolean).join(' '),
@@ -72,7 +106,13 @@ async function resolveMusic(intent, signal) {
     limit: '25',
   });
   const data = await json(url, signal);
-  const matches = (data.results || []).filter(item => item.kind === 'song' && typeof item.trackName === 'string' && typeof item.artistName === 'string' && matchesSong(item, intent));
+  const matches = (data.results || []).filter(
+    (item) =>
+      item.kind === 'song' &&
+      typeof item.trackName === 'string' &&
+      typeof item.artistName === 'string' &&
+      matchesSong(item, intent),
+  );
   const distinct = [
     ...new Map(
       matches.map((item) => [
@@ -113,16 +153,20 @@ async function resolveMusic(intent, signal) {
   let target;
   if (intent.service === 'applemusic') target = trackTarget('applemusic', apple.href);
   else {
-    const lookup = new URL('https://api.song.link/v1-alpha.1/links');
-    lookup.searchParams.set('url', apple.href);
-    const links = await json(lookup, signal);
-    const spotify = links.linksByPlatform?.spotify?.url;
-    if (!spotify)
-      throw new Error(
-        'This song has no verified Spotify link. Try Apple Music or a different version.',
-      );
-    target = trackTarget('spotify', spotify);
+    const appleTrack = trackTarget('applemusic', apple.href);
+    const id = new URL(appleTrack.web).searchParams.get('i');
+    try {
+      target = spotifyFromPage(await read(`https://song.link/i/${id}`, signal), id);
+    } catch {
+      signal?.throwIfAborted();
+    }
+    if (!target)
+      return {
+        kind: 'answer',
+        text: `Found ${song.trackName} by ${song.artistName}, but the free lookup could not verify its exact Spotify link. Nothing was opened. Try this song on Apple Music instead.`,
+      };
   }
+  signal?.throwIfAborted();
   return { ...target, title: song.trackName, artist: song.artistName, service: intent.service };
 }
 async function openTrack(track, { hasProtocol, openExternal }) {
@@ -138,4 +182,5 @@ async function openTrack(track, { hasProtocol, openExternal }) {
   await openExternal(target.web);
   return { message: `Opened ${track.title} by ${track.artist} on the web` };
 }
-module.exports = { resolveMusic, trackTarget, openTrack };
+module.exports = { resolveMusic, trackTarget, openTrack, spotifyFromPage };
+const { XMLParser } = require('fast-xml-parser');

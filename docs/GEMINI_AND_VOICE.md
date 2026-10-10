@@ -6,7 +6,7 @@
 2. Keep your saved API key, or enter a Gemini API key. A consumer AI subscription is not a replacement for API credentials or API quota.
 3. Click **Check connection**. This lists models returned by your account; it does not verify that generation works.
 4. Select a listed text model. Flare preserves the saved selection and otherwise prefers Gemini 3.6 Flash when the account returns it. Listing a model does not guarantee availability, capacity or access to every input modality.
-5. Click **Test response**, then **Run test** only if you accept possible API usage charges. This makes one small request with no files or audio. There are no automatic paid retries or silent model substitutions.
+5. Click **Test response**, then **Run test** only if you accept possible API usage charges. This makes one small request with no files or audio, no retries and no silent model substitutions. Ordinary text requests retry HTTP 503 up to twice with backoff; retries may count toward usage. Speech uploads are not retried automatically.
 6. To use Gemini for speech, choose **Voice recognition > Online**. Choose **Same as Intelligence**, or a dedicated transcription model actually returned by Check connection. Click **Save connection**.
 7. Open Voice, select the intended microphone, wait for Listening, speak, then review the transcript. Alt+Space starts voice after a one-second hold. Escape cancels and releases the microphone.
 
@@ -24,7 +24,7 @@ Online speech is an explicit opt-in. Windows only keeps recordings local. Window
 | 405 on POST | Flare uses Google's documented POST endpoint. Check VPN/proxy/network filtering. Replacing a key is not a general fix for a method rejection. |
 | 401/403 | Check API key validity, restrictions and project permissions. |
 | 429 | Check the API project's quota; model and tier limits may differ. |
-| 503 | The provider is unavailable or busy. Retry later, or manually test another listed model. |
+| 503 | The provider is unavailable or busy. Normal text requests retry up to twice. If it persists, wait, select another listed model, or connect OpenRouter free models. Changing an API key is not a general fix. |
 | Empty/blocked/truncated output | Rephrase or select another model. Flare will not execute a partial response. |
 
 Only the query or explicitly recorded speech is sent by these integrations. AI cannot inspect your drives or run arbitrary shell commands. Local search and approved file operations remain separate. Keys stay encrypted in the native process and are never returned to the UI.

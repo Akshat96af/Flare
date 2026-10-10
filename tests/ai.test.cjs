@@ -248,3 +248,161 @@ test('AI cancellation aborts transport and never retries', async () => {
     },
   );
 });
+
+test('OpenRouter discovers only free text models with structured response support', async () => {
+  const model = {
+    id: 'example/small:free',
+    pricing: { prompt: '0', completion: '0' },
+    architecture: { output_modalities: ['text'] },
+    supported_parameters: ['response_format'],
+  };
+  await withFetch(
+    async (url, options) => {
+      assert.equal(url, 'https://openrouter.ai/api/v1/models?output_modalities=text&max_price=0');
+      assert.equal(options.headers.Authorization, 'Bearer fixture-key');
+      return response({
+        data: [
+          model,
+          { ...model, id: 'example/paid' },
+          {
+            ...model,
+            id: 'example/fee:free',
+            pricing: { prompt: '0', completion: '0', request: '1' },
+          },
+          { ...model, id: 'example/no-json:free', supported_parameters: [] },
+          { ...model, id: 'example/audio:free', architecture: { output_modalities: ['audio'] } },
+        ],
+      });
+    },
+    async () => {
+      assert.deepEqual(await ai.catalogue('openrouter', 'fixture-key'), {
+        models: ['openrouter/free', 'example/small:free'],
+        speechModels: [],
+      });
+    },
+  );
+});
+
+test('OpenRouter generation blocks paid routes and bounds all provider prices to zero', async () => {
+  let calls = 0;
+  await withFetch(
+    async (url, options) => {
+      calls++;
+      assert.equal(url, 'https://openrouter.ai/api/v1/chat/completions');
+      const body = JSON.parse(options.body);
+      assert.equal(body.model, 'openrouter/free');
+      assert.deepEqual(body.provider, {
+        max_price: { prompt: 0, completion: 0, request: 0 },
+        require_parameters: true,
+      });
+      assert.deepEqual(body.response_format, { type: 'json_object' });
+      return response({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                kind: 'music',
+                service: 'spotify',
+                title: 'Dil Mera',
+                artist: 'Yashraj',
+              }),
+            },
+          },
+        ],
+      });
+    },
+    async () => {
+      await assert.rejects(
+        ai.plan('hello', { provider: 'openrouter', model: 'example/paid' }, 'fixture-key'),
+        /Paid model routes are disabled/,
+      );
+      assert.equal(calls, 0);
+      assert.deepEqual(
+        await ai.plan(
+          'spotify dil mera by yashraj',
+          { provider: 'openrouter', model: 'openrouter/free' },
+          'fixture-key',
+        ),
+        { kind: 'music', service: 'spotify', title: 'Dil Mera', artist: 'Yashraj' },
+      );
+      assert.equal(calls, 1);
+    },
+  );
+});
+
+test('a transient 503 recovers without changing providers or models', async () => {
+  let calls = 0;
+  await withFetch(
+    async (url) => {
+      assert.match(url, /gemini-fixture-flash:generateContent$/);
+      if (++calls < 3) return new Response('{}', { status: 503, headers: { 'Retry-After': '0' } });
+      return response({
+        candidates: [{ content: { parts: [{ text: '{"kind":"answer","text":"Ready."}' }] } }],
+      });
+    },
+    async () => {
+      assert.deepEqual(
+        await ai.plan(
+          'hello',
+          { provider: 'gemini', model: 'gemini-fixture-flash' },
+          'fixture-key',
+        ),
+        { kind: 'answer', text: 'Ready.' },
+      );
+      assert.equal(calls, 3);
+    },
+  );
+});
+
+test('auth, quota, long Retry-After and explicit single-test requests are not retried', async () => {
+  for (const [status, after, retries] of [
+    [401, '0', 2],
+    [429, '0', 2],
+    [503, '60', 2],
+    [503, '0', 0],
+  ]) {
+    let calls = 0;
+    await withFetch(
+      async () => {
+        calls++;
+        return new Response('{}', { status, headers: { 'Retry-After': after } });
+      },
+      async () => {
+        await assert.rejects(
+          ai.plan(
+            'hello',
+            { provider: 'gemini', model: 'gemini-fixture-flash' },
+            'fixture-key',
+            undefined,
+            { retries },
+          ),
+        );
+        assert.equal(calls, 1);
+      },
+    );
+  }
+});
+
+test('cancelling during 503 backoff prevents another request', async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  await withFetch(
+    async () => {
+      calls++;
+      setTimeout(() => controller.abort(), 10);
+      return new Response('{}', { status: 503, headers: { 'Retry-After': '2' } });
+    },
+    async () => {
+      await assert.rejects(
+        ai.plan(
+          'hello',
+          { provider: 'gemini', model: 'gemini-fixture-flash' },
+          'fixture-key',
+          controller.signal,
+        ),
+        /cancelled/,
+      );
+      assert.equal(calls, 1);
+    },
+  );
+});

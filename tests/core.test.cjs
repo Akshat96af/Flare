@@ -45,7 +45,7 @@ test('exact match outranks learned prefixes and fuzzy names', () => {
 test('commands use a finite tool registry and clamp Windows values', () => {
   assert.deepEqual(interpretLocal('volume max'), { kind: 'system', command: 'volume', value: 100 });
   assert.equal(interpretLocal('12 * (3 + 4)').value, '84');
-  assert.equal(interpretLocal('open claude').url, 'https://claude.ai');
+  assert.deepEqual(interpretLocal('open claude'), { kind: 'launch', query: 'Claude' });
   assert.throws(() => validateIntent({ kind: 'shell', command: 'del *' }));
   assert.throws(() => validateIntent({ kind: 'website', url: 'https://attacker.test' }));
   assert.equal(validateIntent({ kind: 'system', command: 'brightness', value: 999 }).value, 100);

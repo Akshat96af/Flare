@@ -97,7 +97,9 @@ async function catalogue(provider, key) {
   if (!base) throw new Error('Choose a provider.');
   key = credentials(provider, key);
   if (provider === 'openrouter') {
-    const data = await request(base + '/models?output_modalities=text&max_price=0', { headers: { Authorization: 'Bearer ' + key } });
+    const data = await request(base + '/models?output_modalities=text&max_price=0', {
+      headers: { Authorization: 'Bearer ' + key },
+    });
     const free = (data.data || [])
       .filter(
         (item) =>
@@ -105,7 +107,8 @@ async function catalogue(provider, key) {
           item.pricing?.prompt === '0' &&
           item.pricing?.completion === '0' &&
           (!item.pricing?.request || item.pricing.request === '0') &&
-          item.architecture?.output_modalities?.includes('text') && item.supported_parameters?.includes('response_format'),
+          item.architecture?.output_modalities?.includes('text') &&
+          item.supported_parameters?.includes('response_format'),
       )
       .map((item) => normalizeModel(provider, item.id));
     return {
@@ -219,7 +222,7 @@ const intentSchema = {
   properties: {
     kind: {
       type: 'STRING',
-      enum: ['answer', 'search', 'system', 'tool', 'website', 'launch', 'music', 'service'],
+      enum: ['answer', 'search', 'system', 'tool', 'website', 'launch', 'music', 'service', 'fallback'],
     },
     service: { type: 'STRING', enum: ['spotify', 'applemusic', 'youtube', 'google'] },
     title: { type: 'STRING' },
@@ -248,7 +251,8 @@ async function plan(query, settings, key, signal, { retries = 2 } = {}) {
   let text;
   const base = providers[provider],
     headers = { 'Content-Type': 'application/json' };
-  const system = instruction + actionInstruction;
+  const system = instruction + actionInstruction +
+    ' Correct obvious spelling mistakes in command words, but preserve names and titles. For unsupported requests return {"kind":"fallback"} instead of an explanatory answer; Flare searches Google using the original user input. Use answer for normal factual or conversational questions and requests for clarification. Never put a rewritten query into fallback.';
   const generate = (url, options) =>
     request(url, { ...options, retries }).catch((error) => {
       error.message = `${provider} / ${model}: ${error.message}`;

@@ -21,6 +21,8 @@ const allowed = new Set([
   'ai-save',
   'ai-plan',
   'ai-cancel',
+  'music-resolve',
+  'web-fallback',
   'tool-plan',
   'execute',
   'history',

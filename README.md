@@ -38,9 +38,11 @@ Examples: `open YouTube`, `volume max`, `brightness 50 percent`, `12 * (3 + 4)`,
 
 ## Intelligence
 
-Connect Gemini, OpenAI, Anthropic, or local Ollama in Settings. API keys use Windows-backed Electron safeStorage and are never returned to the UI. Online interpretation shares command text, not indexed document contents. File tools still use locally selected files/folders.
+Connect Gemini, OpenRouter (free models), OpenAI, Anthropic, or local Ollama in Settings. API keys use Windows-backed Electron safeStorage and are never returned to the UI. Online interpretation shares command text, not indexed document contents. File tools still use locally selected files/folders.
 
-When no local result matches, enabled Intelligence offers **Ask AI**. Answers are plain text; AI cannot see your indexed files or invent file changes. Checking a connection only validates model discovery, not generation quota or availability. A generation error links back to Intelligence so you can choose another text model. Flare never automatically retries billable requests.
+When no local result matches, enabled Intelligence offers **Ask AI**. Answers are plain text; AI cannot see your indexed files or invent file changes. Checking a connection only validates model discovery, not generation quota or availability. A generation error links back to Intelligence so you can choose another text model. Normal text requests retry HTTP 503 up to twice with bounded backoff; each attempt may count toward provider usage. Connection tests and speech uploads are not automatically retried. Cancellation stops pending retries.
+
+OpenRouter discovers compatible zero-price text models and offers **Automatic (free models)**. Paid model routes are blocked; free availability and rate limits still apply. See [free AI and music setup](docs/FREE_AI_AND_MUSIC.md). Basic commands avoid the AI API entirely. Music commands resolve catalogue links, prefer a registered player, and otherwise open the exact web track. Apple Music lookup needs no credentials; Spotify mapping is best-effort and reports missing links instead of opening a search page. Opening a track does not guarantee autoplay or bypass a music subscription.
 
 ChatGPT/Claude/Gemini consumer subscriptions are not assumed to include API credits. Voice recognition can use Windows only, Windows with online fallback, or online transcription directly. Online modes are separately opt-in and send recorded audio to the selected OpenAI/Gemini provider. Speech models are independent of the Intelligence model, including Gemini 3.5 Transcribe and GPT-4o Transcribe/Mini. Local English recognition uses Windows speech; an English speech pack is required. Transcripts are reviewed before use. API availability and charges depend on the provider account.
 
@@ -65,6 +67,7 @@ npm run test:bugs
 npm run test:voice
 npm run test:ui
 npm run test:features
+npm run test:ai-music
 npm run format:check
 npm run package
 ```

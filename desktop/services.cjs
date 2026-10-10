@@ -4,6 +4,13 @@ const services = {
   youtube: { title: 'YouTube', home: 'https://www.youtube.com' },
   google: { title: 'Google', home: 'https://www.google.com' },
 };
+function googleFallbackTarget(query) {
+  if (typeof query !== 'string' || !query.trim() || query.length > 2000 || /[\u0000-\u001f]/.test(query))
+    throw new Error('Enter a search below 2,000 characters.');
+  const url = new URL('https://www.google.com/search');
+  url.searchParams.set('q', query);
+  return url.href;
+}
 function serviceTarget(service, query = '') {
   if (!Object.hasOwn(services, service)) throw new Error('Unsupported search service.');
   if (typeof query !== 'string' || query.length > 500 || /[\u0000-\u001f]/.test(query))
@@ -47,4 +54,4 @@ async function openService(intent, { hasProtocol, openExternal }) {
     message: 'Opened ' + target.title + (intent.query ? ' search on the web' : ' on the web'),
   };
 }
-module.exports = { services, serviceTarget, openService };
+module.exports = { services, serviceTarget, openService, googleFallbackTarget };

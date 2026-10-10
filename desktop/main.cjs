@@ -26,7 +26,7 @@ const { chordHeld, foregroundBounds, powershell, scriptPath } = require('./nativ
 const ai = require('./ai.cjs');
 const { createHold } = require('./shortcut.cjs');
 const { QuickShare } = require('./share.cjs');
-const { openService } = require('./services.cjs');
+const { openService, googleFallbackTarget } = require('./services.cjs');
 const { resolveMusic, openTrack } = require('./music.cjs');
 const { randomUUID } = require('node:crypto');
 const tracks = new Map();
@@ -315,18 +315,22 @@ async function executeIntent(intent) {
     return result;
   }
   if (intent.kind === 'launch') {
-    const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normalize = (value) =>
+      value
+        .normalize('NFKC')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]/gu, '');
     const aliases = { vscode: 'visualstudiocode', chrome: 'googlechrome', edge: 'microsoftedge' };
     const name = aliases[normalize(intent.query)] || normalize(intent.query);
     const matches = store.db
       .prepare("SELECT id,title FROM entries WHERE kind='app'")
       .all()
-      .filter((item) => normalize(item.title) === name);
+      .filter((item) => name && normalize(item.title) === name);
     if (matches.length === 1) return dispatch('open', { id: matches[0].id });
     const site = require('./search.cjs').websites.find(([title]) => normalize(title) === name);
     if (!matches.length && site)
       return executeIntent({ kind: 'website', url: site[1], title: site[0] });
-    return { intent: { kind: 'search', query: intent.query } };
+    return { intent: matches.length ? { kind: 'search', query: intent.query } : { kind: 'fallback' } };
   }
   if (intent.kind === 'system') {
     await powershell(intent.command, { value: intent.value });
@@ -447,6 +451,11 @@ async function dispatch(method, data = {}) {
       return saveSettings(data);
     case 'search':
       return query(data.query, data.kind || 'all');
+    case 'web-fallback': {
+      await shell.openExternal(googleFallbackTarget(data.query));
+      hideLauncher();
+      return { message: 'Opened your original request in Google' };
+    }
     case 'open': {
       if (data.id?.startsWith('track:')) {
         const track = tracks.get(data.id);

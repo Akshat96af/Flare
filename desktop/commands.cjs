@@ -1,9 +1,59 @@
 const { evaluate } = require('mathjs');
 const { websites } = require('./search.cjs');
 const { services, serviceTarget } = require('./services.cjs');
+const { distance } = require('fastest-levenshtein');
+const commandWords = ['brightness', 'volume', 'open', 'play', 'find', 'search', 'organize', 'organise', 'arrange', 'compress', 'convert', 'merge', 'cleanup', 'spotify', 'youtube', 'google'];
+const serviceWords = ['spotify', 'apple music', 'youtube', 'google'];
+function correctKeyword(value, choices) {
+  const word = value.toLowerCase();
+  if (choices.includes(word)) return word;
+  if (word.length < 4 || word.length > 30) return value;
+  const scores = [...new Set(choices)].map(candidate => {
+    let edits = distance(word, candidate);
+    // Treat an adjacent letter swap as one typo, including short verbs like "opne".
+    if (edits === 2 && word.length === candidate.length) {
+      const differences = [...word].map((char, i) => char === candidate[i] ? -1 : i).filter(i => i >= 0);
+      if (differences.length === 2 && differences[1] === differences[0] + 1 &&
+          word[differences[0]] === candidate[differences[1]] && word[differences[1]] === candidate[differences[0]]) edits = 1;
+    }
+    return { candidate, edits };
+  }).filter(item => item.edits <= (item.candidate.length >= 8 ? 2 : 1)).sort((a,b) => a.edits-b.edits);
+  return scores.length && (scores.length === 1 || scores[0].edits < scores[1].edits) ? scores[0].candidate : value;
+}
+function normalizeCommand(text) {
+  text = text.replace(/^please\s+/i, '').replace(/\s+please$/i, '');
+  text = text.replace(/^((?:set\s+)?(?:the\s+)?)([a-z]+)/i, (_match, prefix, word) => prefix + correctKeyword(word, commandWords));
+  // Only service positions are corrected. Song titles, artists and file names stay untouched.
+  text = text.replace(/^([a-z]+\s+[a-z]+)(?=\s)/i, phrase => correctKeyword(phrase, ['apple music']));
+  if (!/^(?:spotify|apple music|youtube|google)\s/i.test(text))
+    text = text.replace(/\b([a-z]+(?:\s+music)?)$/i, word => correctKeyword(word, serviceWords));
+  text = text.replace(/^(brightness|volume)\s+([a-z]+)(?=\s+(?:\d|maximum|max|minimum|min)\b)/i,
+    (match, command, repeated) => correctKeyword(repeated, [command.toLowerCase()]) === command.toLowerCase() ? command : match);
+  text = text.replace(/^open\s+(.+)$/i, (_match, target) => 'open ' + correctKeyword(target, [...serviceWords, ...websites.map(([title]) => title.toLowerCase())]));
+  return text;
+}
 function interpretLocal(input) {
+  try {
+    return parseLocal(input);
+  } catch {
+    return null;
+  }
+}
+function parseLocal(input) {
   if (typeof input !== 'string' || input.length > 2000) return null;
-  const text = input.trim().replace(/[.!?]+$/, '');
+  let text = input.trim().replace(/[.!?]+$/, '');
+  if (
+    /^(?:what|why|how|who|where|when|is|are|does|do|can|could|would|should|explain|tell me)\b/i.test(
+      text,
+    )
+  )
+    return null;
+  text = normalizeCommand(text);
+  // Compound requests need interpretation, not partial execution of a local shortcut.
+  if (
+    /\b(?:and then|then|and (?:open|play|set|delete|find|search|organize|organise))\b/i.test(text)
+  )
+    return null;
   const prefix = text.match(/^(spotify|apple music|youtube|google)\s+(.+)$/i);
   const suffix = text.match(
     /^(?:play\s+|find\s+|search(?: for)?\s+)?(.+?)\s+(?:on\s+)?(spotify|apple music|youtube|google)$/i,
@@ -12,7 +62,10 @@ function interpretLocal(input) {
   const mediaQuery = prefix?.[2] || suffix?.[1];
   if (mediaQuery && !/^open$/i.test(mediaQuery)) {
     if (['spotify', 'applemusic'].includes(service)) {
-      const [title, artist = ''] = mediaQuery.replace(/^play\s+/i, '').split(/\s+by\s+/i);
+      const song = mediaQuery.replace(/^play\s+/i, '');
+      const by = /\s+by\s+/i.exec(song);
+      const title = by ? song.slice(0, by.index) : song;
+      const artist = by ? song.slice(by.index + by[0].length) : '';
       return validateIntent({ kind: 'music', service, title, artist });
     }
     return validateIntent({ kind: 'service', service, query: mediaQuery });
@@ -50,7 +103,7 @@ function interpretLocal(input) {
     if (Object.hasOwn(services, m[1].toLowerCase()))
       return { kind: 'service', service: m[1].toLowerCase(), query: '' };
     const site = websites.find(([title]) => title.toLowerCase() === m[1].toLowerCase());
-    return { kind: 'launch', query: site?.[0] || m[1] };
+    return validateIntent({ kind: 'launch', query: site?.[0] || m[1] });
   }
   if (/^(?:organize|organise|arrange)\b/i.test(text))
     return { kind: 'tool', tool: 'organize', mode: /month|date/i.test(text) ? 'month' : 'type' };
@@ -71,6 +124,7 @@ function interpretLocal(input) {
 function validateIntent(intent) {
   if (!intent || typeof intent !== 'object' || Array.isArray(intent))
     throw new Error('AI did not return a valid command.');
+  if (intent.kind === 'fallback') return { kind: 'fallback' };
   if (intent.kind === 'music') {
     if (
       !['spotify', 'applemusic'].includes(intent.service) ||
@@ -133,4 +187,4 @@ function validateIntent(intent) {
   }
   throw new Error('That command is not supported yet. Try searching or choosing a built-in tool.');
 }
-module.exports = { interpretLocal, validateIntent };
+module.exports = { interpretLocal, validateIntent, correctKeyword };

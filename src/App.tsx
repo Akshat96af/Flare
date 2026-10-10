@@ -271,7 +271,15 @@ export default function App() {
       setError((e as Error).message);
     }
   };
-  const handleIntent = async (intent: any) => {
+  const googleFallback = async (original: string, id = aiSequence.current) => {
+    if (id !== aiSequence.current || !original.trim()) return;
+    try {
+      await bridge.call('web-fallback', { query: original });
+    } catch (error) {
+      if (id === aiSequence.current) setError((error as Error).message);
+    }
+  };
+  const handleIntent = async (intent: any, original = query) => {
     if (intent?.kind === 'music') {
       const id = ++aiSequence.current;
       aiPending.current = true;
@@ -280,22 +288,33 @@ export default function App() {
       try {
         const resolved = await bridge.call('music-resolve', intent);
         if (id !== aiSequence.current) return;
-        if (resolved.kind === 'answer') setAiAnswer(resolved.text);
+        if (resolved.kind === 'answer') await googleFallback(original, id);
         else {
           const result = await bridge.call('open', { id: resolved.id });
           setNotice(result.message || '');
         }
+      } catch (error) {
+        if (id === aiSequence.current) await googleFallback(original, id);
       } finally {
         if (id === aiSequence.current) {
           aiPending.current = false;
           setAiBusy(false);
         }
       }
+    } else if (intent?.kind === 'fallback') {
+      await googleFallback(original);
     } else if (intent?.kind === 'tool') {
       setTool(intent.tool);
       setToolMode(intent.mode || 'type');
       setView('tools');
     } else if (intent?.kind === 'search') {
+      const id = aiSequence.current;
+      const found = await bridge.call('search', { query: intent.query, kind: 'all' });
+      if (id !== aiSequence.current) return;
+      if (!found.length) {
+        await googleFallback(original, id);
+        return;
+      }
       setView('search');
       setQuery(intent.query);
       if (intent.query === query)
@@ -304,16 +323,31 @@ export default function App() {
       setView('search');
       setAiAnswer(intent.text);
     } else if (intent) {
-      const value = await bridge.call('open', { intent });
-      if (value.intent?.kind === 'search') await handleIntent(value.intent);
-      setNotice(value.message || '');
+      const id = aiSequence.current;
+      try {
+        const value = await bridge.call('open', { intent });
+        if (id !== aiSequence.current) return;
+        if (value.intent) await handleIntent(value.intent, original);
+        setNotice(value.message || '');
+      } catch {
+        await googleFallback(original, id);
+      }
     }
   };
   const open = (item: Result) =>
     act(async () => {
-      const result = await bridge.call('open', { id: item.id });
-      if (result.intent) await handleIntent(result.intent);
-      if (result.message) setNotice(result.message);
+      if (aiPending.current) return;
+      const id = ++aiSequence.current;
+      const original = item.id.startsWith('command:') ? item.id.slice(8) : query;
+      try {
+        const result = await bridge.call('open', { id: item.id });
+        if (id !== aiSequence.current) return;
+        if (result.intent) await handleIntent(result.intent, original);
+        if (result.message) setNotice(result.message);
+      } catch (error) {
+        if (item.kind === 'command') await googleFallback(original, id);
+        else throw error;
+      }
     });
   const showPreview = async (item: Result) => {
     const id = ++previewSequence.current;
@@ -390,9 +424,9 @@ export default function App() {
     setError('');
     try {
       const intent = await bridge.call('ai-plan', { query });
-      if (aiSequence.current === id) await handleIntent(intent);
+      if (aiSequence.current === id) await handleIntent(intent, query);
     } catch (e) {
-      if (aiSequence.current === id) setError((e as Error).message);
+      if (aiSequence.current === id) await googleFallback(query, id);
     } finally {
       if (aiSequence.current === id) {
         aiPending.current = false;
@@ -423,9 +457,10 @@ export default function App() {
     if (e.key === 'Enter' && !searching && results[selected]) {
       e.preventDefault();
       open(results[selected]);
-    } else if (e.key === 'Enter' && !searching && !results.length && intelligenceOn && !aiAnswer) {
+    } else if (e.key === 'Enter' && !searching && !results.length && !aiAnswer && !aiBusy) {
       e.preventDefault();
-      aiSearch();
+      if (intelligenceOn) aiSearch();
+      else googleFallback(query);
     }
     if (e.key === ' ' && e.ctrlKey && results[selected]?.kind === 'file') {
       e.preventDefault();
@@ -686,6 +721,11 @@ export default function App() {
                 {intelligenceOn && (
                   <button className="subtle ask-ai" onClick={aiSearch} disabled={busy || aiBusy}>
                     <Sparkles size={16} /> {aiBusy ? 'Asking AI...' : 'Ask AI'}
+                  </button>
+                )}
+                {!intelligenceOn && (
+                  <button className="subtle" onClick={() => googleFallback(query)} disabled={busy || aiBusy}>
+                    <Search size={16} /> Search Google
                   </button>
                 )}
               </div>
