@@ -7,6 +7,7 @@ const { within, excluded } = require('./scope.cjs');
 const { photoQuery } = require('./photos.cjs');
 
 const websites = [
+  ['Spotify', 'https://open.spotify.com'],
   ['YouTube', 'https://www.youtube.com'],
   ['Claude', 'https://claude.ai'],
   ['ChatGPT', 'https://chatgpt.com'],

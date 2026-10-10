@@ -649,14 +649,20 @@ export default function App() {
                 );
               })}
             </div>
-            {!searching && !results.length && !aiAnswer && (
+            {!results.length && !aiAnswer && (
               <div className="empty">
-                {aiBusy ? (
+                {aiBusy || searching ? (
                   <LoaderCircle size={24} className="spin" />
                 ) : (
                   <Search size={24} strokeWidth={1} />
                 )}
-                <span>{desktop ? 'No results' : 'No local results in browser preview'}</span>
+                <span>
+                  {searching
+                    ? 'Searching...'
+                    : desktop
+                      ? 'No results'
+                      : 'No local results in browser preview'}
+                </span>
                 {intelligenceOn && (
                   <button className="subtle ask-ai" onClick={aiSearch} disabled={busy || aiBusy}>
                     <Sparkles size={16} /> {aiBusy ? 'Asking AI...' : 'Ask AI'}

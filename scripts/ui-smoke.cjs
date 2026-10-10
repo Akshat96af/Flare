@@ -31,13 +31,30 @@ const AxeBuilder = require('@axe-core/playwright').default;
     // Intercept only this isolated test process. No app launches, mutations or AI calls.
     await instance.evaluate(({ ipcMain }) => {
       const original = ipcMain._invokeHandlers.get('flare:call');
-      global.uiFixture = { opened: [], previews: 0, searches: [], plans: 0, release: null };
+      global.uiFixture = {
+        opened: [],
+        previews: 0,
+        searches: [],
+        plans: 0,
+        release: null,
+        aiSearchTest: true,
+      };
       global.fetch = async () => {
         throw new Error('Network disabled in UI smoke test');
       };
       ipcMain.removeHandler('flare:call');
       ipcMain.handle('flare:call', async (event, method, data) => {
         const state = global.uiFixture;
+        if (method === 'snapshot' && state.aiSearchTest) {
+          const snapshot = await original(event, method, data);
+          snapshot.settings.ai = {
+            ...snapshot.settings.ai,
+            provider: 'gemini',
+            model: 'fixture-model',
+          };
+          return snapshot;
+        }
+        if (method === 'ai-plan') throw new Error('AI must not run while typing');
         if (method === 'pick') return ['fixture'];
         if (method === 'tool-plan') {
           state.plans++;
@@ -59,6 +76,14 @@ const AxeBuilder = require('@axe-core/playwright').default;
         }
         if (method === 'search') {
           state.searches.push(data.query);
+          if (state.aiSearchTest) {
+            await new Promise((resolve) => {
+              state.release = resolve;
+            });
+            return data.query === 'matched'
+              ? [{ id: 'fixture:match', kind: 'app', title: 'Matched app', detail: 'Fixture' }]
+              : [];
+          }
           if (data.query === 'second') {
             await new Promise((resolve) => {
               state.release = resolve;
@@ -108,6 +133,61 @@ const AxeBuilder = require('@axe-core/playwright').default;
         global.uiFixture.release?.();
         global.uiFixture.release = null;
       });
+    await page.reload();
+    await input.waitFor();
+    await settle();
+    await input.fill('unmatched');
+    await expect
+      .poll(() => instance.evaluate(() => global.uiFixture.searches.includes('unmatched')))
+      .toBe(true);
+    await release();
+    const ask = page.locator('.empty .ask-ai');
+    await expect(ask).toBeVisible();
+    const emptyHeight = await page
+      .locator('.empty')
+      .evaluate((node) => node.getBoundingClientRect().height);
+    await ask.evaluate((node) => {
+      window.askAiNode = node;
+    });
+    for (const query of ['unmatched a', 'unmatched ab', 'unmatched abc']) {
+      await input.fill(query);
+      await expect
+        .poll(() =>
+          instance.evaluate((_, query) => global.uiFixture.searches.includes(query), query),
+        )
+        .toBe(true);
+      assert.equal(
+        await page.evaluate(() => window.askAiNode.isConnected),
+        true,
+        'Ask AI must stay mounted during each pending search',
+      );
+      await expect(ask).toBeVisible();
+      assert.equal(
+        await page.locator('.empty').evaluate((node) => node.getBoundingClientRect().height),
+        emptyHeight,
+        'Pending search must not collapse the section',
+      );
+      await expect(page.locator('.empty')).toContainText('Searching...');
+      await release();
+      await expect(page.locator('.empty')).toContainText('No results');
+    }
+    await input.fill('matched');
+    await expect
+      .poll(() => instance.evaluate(() => global.uiFixture.searches.includes('matched')))
+      .toBe(true);
+    await release();
+    await page.getByRole('option', { name: /Matched app/ }).waitFor();
+    await expect(page.locator('.empty')).toHaveCount(0);
+    await input.fill('');
+    await expect(page.locator('.search-content')).toHaveCount(0);
+    checks.push(
+      'Ask AI remains mounted at a stable height across pending keystrokes, then yields to matches or an empty query',
+    );
+    await instance.evaluate(() => {
+      global.uiFixture.aiSearchTest = false;
+    });
+    await page.reload();
+    await input.waitFor();
     await settle();
     await input.fill('first');
     await page.getByRole('option', { name: /Art direction/ }).waitFor();

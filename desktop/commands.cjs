@@ -1,7 +1,11 @@
 const { evaluate } = require('mathjs');
 const { websites } = require('./search.cjs');
+const { services, serviceTarget } = require('./services.cjs');
 function interpretLocal(input) {
   const text = input.trim().replace(/[.!?]+$/, '');
+  const media = text.match(/^(spotify|youtube|google)\s+(.+)$/i) ||
+    text.match(/^(?:play|find|search(?: for)?)\s+(.+?)\s+on\s+(spotify|youtube|google)$/i)?.map((part, index, parts) => index === 1 ? parts[2] : index === 2 ? parts[1] : part);
+  if (media) return validateIntent({ kind: 'service', service: media[1].toLowerCase(), query: media[2] });
   let m = text.match(
     /^(?:set\s+)?(?:the\s+)?(volume|brightness)(?:\s+to)?\s+(maximum|max|minimum|min|mute|zero|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:one )?hundred|\d{1,3})(?:\s*%|\s+percent)?$/i,
   );
@@ -31,9 +35,10 @@ function interpretLocal(input) {
     };
   m = text.match(/^open\s+(.+)$/i);
   if (m) {
+    if (Object.hasOwn(services, m[1].toLowerCase()))
+      return { kind: 'service', service: m[1].toLowerCase(), query: '' };
     const site = websites.find(([title]) => title.toLowerCase() === m[1].toLowerCase());
-    if (site) return { kind: 'website', url: site[1], title: site[0] };
-    return { kind: 'search', query: m[1] };
+    return { kind: 'launch', query: site?.[0] || m[1] };
   }
   if (/^(?:organize|organise|arrange)\b/i.test(text))
     return { kind: 'tool', tool: 'organize', mode: /month|date/i.test(text) ? 'month' : 'type' };
@@ -54,6 +59,12 @@ function interpretLocal(input) {
 function validateIntent(intent) {
   if (!intent || typeof intent !== 'object' || Array.isArray(intent))
     throw new Error('AI did not return a valid command.');
+  if (intent.kind === 'service') {
+    serviceTarget(intent.service, intent.query);
+    return { kind: 'service', service: intent.service, query: (intent.query || '').trim() };
+  }
+  if (intent.kind === 'launch' && typeof intent.query === 'string' && intent.query.trim() && intent.query.length <= 100 && !/[\\/:\u0000-\u001f]/.test(intent.query))
+    return { kind: 'launch', query: intent.query.trim() };
   if (
     intent.kind === 'answer' &&
     typeof intent.text === 'string' &&
