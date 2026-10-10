@@ -5,7 +5,12 @@ const services = {
   google: { title: 'Google', home: 'https://www.google.com' },
 };
 function googleFallbackTarget(query) {
-  if (typeof query !== 'string' || !query.trim() || query.length > 2000 || /[\u0000-\u001f]/.test(query))
+  if (
+    typeof query !== 'string' ||
+    !query.trim() ||
+    query.length > 2000 ||
+    /[\u0000-\u001f]/.test(query)
+  )
     throw new Error('Enter a search below 2,000 characters.');
   const url = new URL('https://www.google.com/search');
   url.searchParams.set('q', query);

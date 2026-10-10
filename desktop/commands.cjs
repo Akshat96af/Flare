@@ -2,34 +2,76 @@ const { evaluate } = require('mathjs');
 const { websites } = require('./search.cjs');
 const { services, serviceTarget } = require('./services.cjs');
 const { distance } = require('fastest-levenshtein');
-const commandWords = ['brightness', 'volume', 'open', 'play', 'find', 'search', 'organize', 'organise', 'arrange', 'compress', 'convert', 'merge', 'cleanup', 'spotify', 'youtube', 'google'];
+const commandWords = [
+  'brightness',
+  'volume',
+  'open',
+  'play',
+  'find',
+  'search',
+  'organize',
+  'organise',
+  'arrange',
+  'compress',
+  'convert',
+  'merge',
+  'cleanup',
+  'spotify',
+  'youtube',
+  'google',
+];
 const serviceWords = ['spotify', 'apple music', 'youtube', 'google'];
 function correctKeyword(value, choices) {
   const word = value.toLowerCase();
   if (choices.includes(word)) return word;
   if (word.length < 4 || word.length > 30) return value;
-  const scores = [...new Set(choices)].map(candidate => {
-    let edits = distance(word, candidate);
-    // Treat an adjacent letter swap as one typo, including short verbs like "opne".
-    if (edits === 2 && word.length === candidate.length) {
-      const differences = [...word].map((char, i) => char === candidate[i] ? -1 : i).filter(i => i >= 0);
-      if (differences.length === 2 && differences[1] === differences[0] + 1 &&
-          word[differences[0]] === candidate[differences[1]] && word[differences[1]] === candidate[differences[0]]) edits = 1;
-    }
-    return { candidate, edits };
-  }).filter(item => item.edits <= (item.candidate.length >= 8 ? 2 : 1)).sort((a,b) => a.edits-b.edits);
-  return scores.length && (scores.length === 1 || scores[0].edits < scores[1].edits) ? scores[0].candidate : value;
+  const scores = [...new Set(choices)]
+    .map((candidate) => {
+      let edits = distance(word, candidate);
+      // Treat an adjacent letter swap as one typo, including short verbs like "opne".
+      if (edits === 2 && word.length === candidate.length) {
+        const differences = [...word]
+          .map((char, i) => (char === candidate[i] ? -1 : i))
+          .filter((i) => i >= 0);
+        if (
+          differences.length === 2 &&
+          differences[1] === differences[0] + 1 &&
+          word[differences[0]] === candidate[differences[1]] &&
+          word[differences[1]] === candidate[differences[0]]
+        )
+          edits = 1;
+      }
+      return { candidate, edits };
+    })
+    .filter((item) => item.edits <= (item.candidate.length >= 8 ? 2 : 1))
+    .sort((a, b) => a.edits - b.edits);
+  return scores.length && (scores.length === 1 || scores[0].edits < scores[1].edits)
+    ? scores[0].candidate
+    : value;
 }
 function normalizeCommand(text) {
   text = text.replace(/^please\s+/i, '').replace(/\s+please$/i, '');
-  text = text.replace(/^((?:set\s+)?(?:the\s+)?)([a-z]+)/i, (_match, prefix, word) => prefix + correctKeyword(word, commandWords));
+  text = text.replace(
+    /^((?:set\s+)?(?:the\s+)?)([a-z]+)/i,
+    (_match, prefix, word) => prefix + correctKeyword(word, commandWords),
+  );
   // Only service positions are corrected. Song titles, artists and file names stay untouched.
-  text = text.replace(/^([a-z]+\s+[a-z]+)(?=\s)/i, phrase => correctKeyword(phrase, ['apple music']));
+  text = text.replace(/^([a-z]+\s+[a-z]+)(?=\s)/i, (phrase) =>
+    correctKeyword(phrase, ['apple music']),
+  );
   if (!/^(?:spotify|apple music|youtube|google)\s/i.test(text))
-    text = text.replace(/\b([a-z]+(?:\s+music)?)$/i, word => correctKeyword(word, serviceWords));
-  text = text.replace(/^(brightness|volume)\s+([a-z]+)(?=\s+(?:\d|maximum|max|minimum|min)\b)/i,
-    (match, command, repeated) => correctKeyword(repeated, [command.toLowerCase()]) === command.toLowerCase() ? command : match);
-  text = text.replace(/^open\s+(.+)$/i, (_match, target) => 'open ' + correctKeyword(target, [...serviceWords, ...websites.map(([title]) => title.toLowerCase())]));
+    text = text.replace(/\b([a-z]+(?:\s+music)?)$/i, (word) => correctKeyword(word, serviceWords));
+  text = text.replace(
+    /^(brightness|volume)\s+([a-z]+)(?=\s+(?:\d{1,3}|maximum|max|minimum|min)\b)/i,
+    (match, command, repeated) =>
+      correctKeyword(repeated, [command.toLowerCase()]) === command.toLowerCase() ? command : match,
+  );
+  text = text.replace(
+    /^open\s+(.+)$/i,
+    (_match, target) =>
+      'open ' +
+      correctKeyword(target, [...serviceWords, ...websites.map(([title]) => title.toLowerCase())]),
+  );
   return text;
 }
 function interpretLocal(input) {
@@ -41,7 +83,10 @@ function interpretLocal(input) {
 }
 function parseLocal(input) {
   if (typeof input !== 'string' || input.length > 2000) return null;
-  let text = input.trim().replace(/[.!?]+$/, '');
+  let text = input
+    .trim()
+    .replace(/[.!?]+$/, '')
+    .replace(/^(?:(?:can|could|would) you (?:please )?|please )/i, '');
   if (
     /^(?:what|why|how|who|where|when|is|are|does|do|can|could|would|should|explain|tell me)\b/i.test(
       text,

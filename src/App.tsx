@@ -157,6 +157,7 @@ export default function App() {
   useEffect(() => {
     const dismiss = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      if (document.querySelector('select:open')) return;
       event.preventDefault();
       bridge.call('hide').catch(() => {});
     };
@@ -339,6 +340,10 @@ export default function App() {
       if (aiPending.current) return;
       const id = ++aiSequence.current;
       const original = item.id.startsWith('command:') ? item.id.slice(8) : query;
+      if (item.kind === 'command') {
+        aiPending.current = true;
+        setAiBusy(true);
+      }
       try {
         const result = await bridge.call('open', { id: item.id });
         if (id !== aiSequence.current) return;
@@ -347,6 +352,11 @@ export default function App() {
       } catch (error) {
         if (item.kind === 'command') await googleFallback(original, id);
         else throw error;
+      } finally {
+        if (id === aiSequence.current) {
+          aiPending.current = false;
+          setAiBusy(false);
+        }
       }
     });
   const showPreview = async (item: Result) => {
@@ -724,7 +734,11 @@ export default function App() {
                   </button>
                 )}
                 {!intelligenceOn && (
-                  <button className="subtle" onClick={() => googleFallback(query)} disabled={busy || aiBusy}>
+                  <button
+                    className="subtle"
+                    onClick={() => googleFallback(query)}
+                    disabled={busy || aiBusy}
+                  >
                     <Search size={16} /> Search Google
                   </button>
                 )}

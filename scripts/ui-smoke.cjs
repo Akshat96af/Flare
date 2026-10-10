@@ -201,14 +201,14 @@ const AxeBuilder = require('@axe-core/playwright').default;
           .getAnimations()
           .some(
             (animation) =>
-              animation.effect.getTiming().duration === 560 &&
-              animation.effect.getKeyframes().some((frame) => frame.transform?.includes('32px')),
+              animation.effect.getTiming().duration === 320 &&
+              animation.effect.getKeyframes().some((frame) => frame.transform?.includes('16px')),
           ),
       );
     assert.equal(
       navigationMotion,
       true,
-      'Panel navigation uses the new directional 560ms entrance',
+      'Panel navigation uses a directional 320ms entrance without scaling forms',
     );
     const cascade = await page.evaluate(() =>
       document
@@ -217,7 +217,7 @@ const AxeBuilder = require('@axe-core/playwright').default;
         .map((a) => a.effect.getTiming().delay),
     );
     assert.ok(
-      cascade.some((delay) => delay >= 144),
+      cascade.some((delay) => delay >= 80),
       'Content enters in a bounded cascade',
     );
     for (const time of [0, 180, 360, 680]) {
@@ -342,7 +342,11 @@ const AxeBuilder = require('@axe-core/playwright').default;
         getComputedStyle(button).opacity === '1'
       );
     });
-    assert.equal(glassFlash, true, 'Click illuminates only the glass edge, not the whole control');
+    assert.equal(
+      glassFlash,
+      false,
+      'Segmented controls use their sliding selection without a competing edge flash',
+    );
     await settle();
     await page.mouse.move(0, 0);
     await page.getByRole('button', { name: 'light theme' }).hover();
@@ -371,7 +375,7 @@ const AxeBuilder = require('@axe-core/playwright').default;
       button.click();
       return button.getAnimations().some((a) => a.effect.getKeyframes().some((k) => k.scale));
     });
-    assert.equal(press, true, 'Click creates bounded scale feedback');
+    assert.equal(press, false, 'Switches animate their thumb without bouncing the whole control');
     await expect(page.locator('html')).toHaveAttribute('data-glass', 'off');
     await page.getByRole('switch', { name: 'Liquid glass' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-glass', 'on');

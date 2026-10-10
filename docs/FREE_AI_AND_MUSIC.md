@@ -24,13 +24,17 @@ Examples:
 - `volume max`
 - `what is the difference between RAM and storage?`
 
-Music lookup first verifies title and artist against Apple's public song catalogue, including featured artists. Ambiguous matches ask for clarification. A verified Apple Music track can open directly. Spotify additionally needs an exact mapping on the public Songlink page; its retired public API is not used. Missing mappings, changed page formats and lookup failures do not open guessed tracks or search pages. No Spotify key or paid lookup service is required, but this means Spotify coverage is incomplete.
+Music lookup first verifies title and artist against Apple's public song catalogue, including featured artists. A verified Apple Music track can open directly. Spotify additionally needs an exact mapping on the public Songlink page; its retired public API is not used. Ambiguous matches, missing mappings, changed page formats and lookup failures open a Google search with exactly the submitted text. Flare never guesses a track ID. No Spotify key or paid lookup service is required, but this means direct Spotify coverage is incomplete.
 
-Checked on 2026-10-10: `Dil Mera` featuring Yashraj resolves to an exact Apple Music track. The public mapping did not expose a Spotify track link, so Flare reports that limitation. Player protocol handlers are checked before opening native links; absent or failed handlers fall back to the exact web URL. Links returned to the renderer are single-use, short-lived capabilities that are cleared on cancellation. Track opening is not verified playback: browser autoplay rules, login, music subscriptions and regional availability still apply. The Spotify playback API is not integrated.
+Checked on 2026-10-10: `Dil Mera` featuring Yashraj resolves to an exact Apple Music track. The public mapping did not expose a Spotify track link, so a submitted Spotify request now falls back to Google. Player protocol handlers are checked before opening native links; absent or failed handlers fall back to the exact web URL. Links returned to the renderer are single-use, short-lived capabilities that are cleared on cancellation. Track opening is not verified playback: browser autoplay rules, login, music subscriptions and regional availability still apply. The Spotify playback API is not integrated.
+
+Google fallback also handles unresolved app launches, unsupported AI commands, failed AI requests, and empty AI-requested file searches. With AI off, Enter or Search Google submits an unmatched query. Ordinary AI answers remain in Flare. Typing, cancellation, background indexing and file-operation errors never automatically search the web. The fallback sends the submitted text to Google, not local file contents or error details. Avoid including secrets in requests.
+
+Spelling correction applies to recognized command positions, not arbitrary song titles or filenames. Only a unique close match is accepted; ambiguous or heavily misspelled commands remain for AI or Google. File tools still require choosing files and their normal approval flow. This is not arbitrary computer automation.
 
 ## Verification
 
-`npm run test:ai-music` launches an isolated Electron profile with mocked network responses and external launches. It covers the free model picker, real preload bridge, exact links, single-use tokens, cancellation and visible lookup errors. Unit tests also cover command parsing, host validation, ambiguous matches, free-route restrictions and bounded 503 retries. Live generation quality and paid playback were not tested.
+`npm run test:ai-music` launches an isolated Electron profile with mocked network responses and external launches. It covers the free model picker, real preload bridge, exact links, single-use tokens, cancellation, original-query Google fallback and built-in command routing. Unit tests also cover typo parsing, host validation, ambiguous matches, free-route restrictions and bounded 503 retries. Hardware brightness/volume behavior, live generation quality and paid playback were not tested by these mocks.
 
 ## References
 

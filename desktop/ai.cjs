@@ -222,7 +222,17 @@ const intentSchema = {
   properties: {
     kind: {
       type: 'STRING',
-      enum: ['answer', 'search', 'system', 'tool', 'website', 'launch', 'music', 'service', 'fallback'],
+      enum: [
+        'answer',
+        'search',
+        'system',
+        'tool',
+        'website',
+        'launch',
+        'music',
+        'service',
+        'fallback',
+      ],
     },
     service: { type: 'STRING', enum: ['spotify', 'applemusic', 'youtube', 'google'] },
     title: { type: 'STRING' },
@@ -251,7 +261,9 @@ async function plan(query, settings, key, signal, { retries = 2 } = {}) {
   let text;
   const base = providers[provider],
     headers = { 'Content-Type': 'application/json' };
-  const system = instruction + actionInstruction +
+  const system =
+    instruction +
+    actionInstruction +
     ' Correct obvious spelling mistakes in command words, but preserve names and titles. For unsupported requests return {"kind":"fallback"} instead of an explanatory answer; Flare searches Google using the original user input. Use answer for normal factual or conversational questions and requests for clarification. Never put a rewritten query into fallback.';
   const generate = (url, options) =>
     request(url, { ...options, retries }).catch((error) => {

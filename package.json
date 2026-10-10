@@ -18,6 +18,7 @@
     "test:voice": "node scripts/voice-smoke.cjs",
     "test:features": "node scripts/features-smoke.cjs",
     "test:ai-music": "node scripts/ai-music-smoke.cjs",
+    "test:settings-motion": "node scripts/settings-motion-smoke.cjs",
     "test:glass": "node scripts/glass-smoke.cjs",
     "assets": "node scripts/assets.cjs",
     "notices": "node scripts/notices.cjs",

@@ -17,10 +17,11 @@ export function usePressFeedback(root: RefObject<HTMLElement | null>) {
     };
     const press = (event: MouseEvent) => {
       if (motion.matches || !(event.target instanceof Element)) return;
-      const control = event.target.closest<HTMLElement>('button, select, input[type="checkbox"]');
+      const control = event.target.closest<HTMLElement>('button');
       if (
         !control ||
         control.matches(':disabled, [aria-disabled="true"]') ||
+        control.matches('[role="switch"], .segmented button') ||
         control.closest('[inert]') ||
         !element.contains(control)
       )
@@ -31,16 +32,12 @@ export function usePressFeedback(root: RefObject<HTMLElement | null>) {
       const scale = control.matches('.result-main, .setting-link')
         ? '0.995'
         : control.matches('.icon-button')
-          ? '0.86'
-          : '0.96';
+          ? '0.96'
+          : '0.985';
       const animation = control.animate(
-        [
-          { scale: previousScale === 'none' ? scale : previousScale },
-          { scale: control.matches('.icon-button') ? '1.045' : '1.006', offset: 0.58 },
-          { scale: '1' },
-        ],
+        [{ scale: previousScale === 'none' ? scale : previousScale }, { scale: '1' }],
         {
-          duration: 460,
+          duration: 220,
           easing: cinematicEase,
         },
       );
@@ -55,7 +52,7 @@ export function usePressFeedback(root: RefObject<HTMLElement | null>) {
         animations.push(
           control.animate([{ opacity: 0.9 }, { opacity: 0 }], {
             pseudoElement: '::after',
-            duration: 600,
+            duration: 300,
             easing: 'ease-out',
           }),
         );

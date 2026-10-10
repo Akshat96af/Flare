@@ -35,12 +35,12 @@ export function usePanelMotion(root: RefObject<HTMLElement | null>, view: string
       [
         {
           opacity: 0,
-          transform: `translate3d(${returning ? -24 : 32}px, 10px, 0) scale(.975)`,
+          transform: `translate3d(${returning ? -12 : 16}px, 0, 0)`,
           transformOrigin: '50% 0',
         },
-        { opacity: 1, transform: 'translate3d(0, 0, 0) scale(1)', transformOrigin: '50% 0' },
+        { opacity: 1, transform: 'translate3d(0, 0, 0)', transformOrigin: '50% 0' },
       ],
-      560,
+      320,
     );
     // Choreograph navigation, never query updates. Long forms get a bounded cascade.
     const content =
@@ -56,11 +56,11 @@ export function usePanelMotion(root: RefObject<HTMLElement | null>, view: string
         play(
           child,
           [
-            { opacity: 0.12, transform: 'translate3d(0, 18px, 0)' },
+            { opacity: 0.3, transform: 'translate3d(0, 6px, 0)' },
             { opacity: 1, transform: 'translate3d(0, 0, 0)' },
           ],
-          480,
-          32 + Math.min(index, 5) * 28,
+          240,
+          16 + Math.min(index, 5) * 16,
         );
       });
     const heading = surface.querySelector<HTMLElement>(':scope > .section-heading');
@@ -68,29 +68,38 @@ export function usePanelMotion(root: RefObject<HTMLElement | null>, view: string
       play(
         heading,
         [
-          { opacity: 0.15, transform: 'translate3d(0, -9px, 0)' },
+          { opacity: 0.5, transform: 'translate3d(0, -4px, 0)' },
           { opacity: 1, transform: 'translate3d(0, 0, 0)' },
         ],
-        480,
-        20,
+        240,
+        0,
       );
     const footer = element.querySelector<HTMLElement>(':scope > .launcher-footer');
     if (footer)
       play(
         footer,
         [
-          { opacity: 0.5, transform: 'translate3d(0, 12px, 0)' },
+          { opacity: 0.6, transform: 'translate3d(0, 4px, 0)' },
           { opacity: 1, transform: 'translate3d(0, 0, 0)' },
         ],
-        520,
-        60,
+        260,
+        20,
       );
     const stop = () => animations.forEach((animation) => animation.cancel());
+    // Settle moving ancestors before a picker calculates its top-layer anchor.
+    const interact = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('select, input, textarea'))
+        stop();
+    };
+    element.addEventListener('pointerdown', interact, true);
+    element.addEventListener('focusin', interact);
     motion.addEventListener('change', stop);
     window.addEventListener('blur', stop);
     window.addEventListener('flare:dismiss', stop);
     return () => {
       stop();
+      element.removeEventListener('pointerdown', interact, true);
+      element.removeEventListener('focusin', interact);
       motion.removeEventListener('change', stop);
       window.removeEventListener('blur', stop);
       window.removeEventListener('flare:dismiss', stop);
@@ -113,11 +122,11 @@ export function useLauncherMotion(root: RefObject<HTMLElement | null>) {
       if (motion.matches) return;
       const animation = element.animate(
         [
-          { opacity: 0, transform: 'translate3d(0, -20px, 0) scale(.94)' },
+          { opacity: 0, transform: 'translate3d(0, -10px, 0) scale(.985)' },
           { opacity: 1, offset: 0.32 },
           { opacity: 1, transform: 'translate3d(0, 0, 0) scale(1)' },
         ],
-        { duration: 680, easing: cinematicEase },
+        { duration: 420, easing: cinematicEase },
       );
       animation.id = 'flare-launch';
       animations.push(animation);
@@ -126,20 +135,27 @@ export function useLauncherMotion(root: RefObject<HTMLElement | null>) {
         animations.push(
           rail.animate(
             [
-              { opacity: 0.2, transform: 'translate3d(0, 8px, 0)' },
+              { opacity: 0.4, transform: 'translate3d(0, 4px, 0)' },
               { opacity: 1, transform: 'translate3d(0, 0, 0)' },
             ],
-            { duration: 560, delay: 60, easing: cinematicEase, fill: 'backwards' },
+            { duration: 300, delay: 30, easing: cinematicEase, fill: 'backwards' },
           ),
         );
     };
+    const settlePicker = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('select')) stop();
+    };
     enter();
+    element.addEventListener('pointerdown', settlePicker, true);
+    element.addEventListener('focusin', settlePicker);
     window.addEventListener('flare:activate', enter);
     window.addEventListener('flare:dismiss', stop);
     window.addEventListener('blur', stop);
     motion.addEventListener('change', stop);
     return () => {
       stop();
+      element.removeEventListener('pointerdown', settlePicker, true);
+      element.removeEventListener('focusin', settlePicker);
       window.removeEventListener('flare:activate', enter);
       window.removeEventListener('flare:dismiss', stop);
       window.removeEventListener('blur', stop);

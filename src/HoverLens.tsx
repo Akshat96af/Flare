@@ -62,6 +62,18 @@ export default function HoverLens({
         return;
       }
       if (target === control) return;
+      if (
+        surface
+          .getAnimations({ subtree: true })
+          .some(
+            (animation) =>
+              (animation.id === 'flare-panel' || animation.id === 'flare-launch') &&
+              animation.playState === 'running',
+          )
+      ) {
+        clear();
+        return;
+      }
       // Read geometry only when the target changes, never during animation frames.
       const box = control.getBoundingClientRect(),
         base = surface.getBoundingClientRect();

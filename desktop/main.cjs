@@ -272,7 +272,12 @@ async function query(q, kind) {
       id: 'command:' + q,
       title: intent.kind === 'calculator' ? intent.value : q,
       kind: 'command',
-      detail: intent.kind === 'calculator' ? 'Calculator' : 'Built-in command',
+      detail:
+        intent.kind === 'calculator'
+          ? 'Calculator'
+          : intent.kind === 'system'
+            ? `${intent.command === 'brightness' ? 'Brightness' : 'Volume'} ${intent.value}%`
+            : 'Built-in command',
       intent,
     });
   const results = list.slice(0, 30);
@@ -322,15 +327,19 @@ async function executeIntent(intent) {
         .replace(/[^\p{L}\p{N}]/gu, '');
     const aliases = { vscode: 'visualstudiocode', chrome: 'googlechrome', edge: 'microsoftedge' };
     const name = aliases[normalize(intent.query)] || normalize(intent.query);
-    const matches = store.db
-      .prepare("SELECT id,title FROM entries WHERE kind='app'")
-      .all()
-      .filter((item) => name && normalize(item.title) === name);
+    const apps = store.db.prepare("SELECT id,title FROM entries WHERE kind='app'").all();
+    const matchedName = require('./commands.cjs').correctKeyword(
+      name,
+      apps.map((item) => normalize(item.title)),
+    );
+    const matches = apps.filter((item) => name && normalize(item.title) === matchedName);
     if (matches.length === 1) return dispatch('open', { id: matches[0].id });
     const site = require('./search.cjs').websites.find(([title]) => normalize(title) === name);
     if (!matches.length && site)
       return executeIntent({ kind: 'website', url: site[1], title: site[0] });
-    return { intent: matches.length ? { kind: 'search', query: intent.query } : { kind: 'fallback' } };
+    return {
+      intent: matches.length ? { kind: 'search', query: intent.query } : { kind: 'fallback' },
+    };
   }
   if (intent.kind === 'system') {
     await powershell(intent.command, { value: intent.value });

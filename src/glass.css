@@ -206,7 +206,7 @@
     0 2px 5px rgba(0, 0, 0, 0.16);
 }
 .glass-selection {
-  transition: transform 480ms var(--motion-out);
+  transition: transform 260ms var(--motion-out);
 }
 :root[data-glass='on'] .result.is-selected {
   border-color: var(--glass-control);
@@ -282,7 +282,7 @@ button > svg {
 }
 .toggle span {
   transition:
-    transform 420ms var(--motion-out),
+    transform 260ms var(--motion-out),
     background 220ms ease;
 }
 :root[data-glass='on'] .toggle {
@@ -311,17 +311,17 @@ button > svg {
 .notice,
 .error-strip,
 .test-confirmation {
-  animation: detailReveal 420ms var(--motion-out);
+  animation: detailReveal 260ms var(--motion-out);
   transform-origin: 50% 0;
 }
 @keyframes detailReveal {
   from {
     opacity: 0;
-    transform: translate3d(0, 12px, 0) scale(0.985);
+    transform: translate3d(0, 6px, 0);
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, 0, 0);
   }
 }
 .result-enter {
@@ -333,6 +333,101 @@ button > svg {
 }
 :is(select, input, textarea):disabled {
   opacity: 0.5;
+}
+/* Native select semantics, with a themed top-layer picker rather than an OS popup. */
+@supports (appearance: base-select) {
+  select,
+  select::picker(select) {
+    appearance: base-select;
+  }
+  select {
+    min-height: 38px;
+    min-width: 0;
+    align-items: center;
+    gap: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease;
+  }
+  select::picker-icon {
+    color: var(--muted);
+    transition: rotate 200ms var(--motion-out);
+  }
+  select:open::picker-icon {
+    rotate: 180deg;
+  }
+  select:open {
+    border-color: var(--accent);
+  }
+  select::picker(select) {
+    color: var(--text);
+    background: var(--raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px;
+    margin-block: 5px;
+    min-width: anchor-size(width);
+    max-width: calc(100vw - 36px);
+    max-height: min(320px, 50vh);
+    overflow: auto;
+    scrollbar-width: thin;
+    box-shadow:
+      0 12px 30px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 var(--glass-highlight);
+    opacity: 0;
+    translate: 0 -4px;
+    transition:
+      opacity 160ms ease,
+      translate 200ms var(--motion-out),
+      display 200ms allow-discrete,
+      overlay 200ms allow-discrete;
+  }
+  :root[data-glass='on'] select::picker(select) {
+    background: color-mix(in srgb, var(--raised) 92%, transparent);
+    backdrop-filter: blur(22px) saturate(1.15);
+  }
+  select:open::picker(select) {
+    opacity: 1;
+    translate: 0 0;
+  }
+  @starting-style {
+    select:open::picker(select) {
+      opacity: 0;
+      translate: 0 -4px;
+    }
+  }
+  select option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 34px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    transition: background-color 120ms ease;
+  }
+  select option:checked {
+    background: var(--selected);
+  }
+  select option:hover,
+  select option:focus-visible {
+    background: var(--hover);
+    outline: 1px solid var(--border);
+    outline-offset: -1px;
+  }
+  select option::checkmark {
+    color: var(--accent);
+  }
+  select option:disabled {
+    color: var(--muted);
+    cursor: default;
+  }
 }
 :root[data-glass='on'] .primary {
   background: linear-gradient(170deg, rgba(255, 255, 255, 0.2), transparent 65%), var(--accent);
@@ -381,6 +476,10 @@ button > svg {
   display: none;
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root[data-glass='on'] select::picker(select) {
+    background: var(--raised);
+    backdrop-filter: none;
+  }
   :root[data-glass='on'] .launcher {
     background: var(--surface);
     border-color: var(--text);
@@ -400,6 +499,11 @@ button > svg {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  select::picker(select),
+  select::picker-icon {
+    transition: none !important;
+    translate: none !important;
+  }
   .rail-optics,
   .hover-lens {
     display: none;
@@ -430,6 +534,13 @@ button > svg {
   }
 }
 @media (forced-colors: active) {
+  select::picker(select) {
+    background: Canvas !important;
+    color: CanvasText;
+    border-color: ButtonText;
+    backdrop-filter: none !important;
+    box-shadow: none;
+  }
   .launcher::before,
   .launcher::after,
   button::after,

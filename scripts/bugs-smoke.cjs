@@ -146,12 +146,16 @@ const { expect } = require('@playwright/test');
       0,
       'No AI invitation when Intelligence is off',
     );
-    await instance.evaluate(() => {
+    await instance.evaluate(({ shell }) => {
       global.flareTest = {
         requests: [],
+        opened: [],
         status: 200,
         delay: 0,
         answer: 'A concise fixture answer.',
+      };
+      shell.openExternal = async (url) => {
+        global.flareTest.opened.push(url);
       };
       // All AI traffic in this test is replaced in the native process, never sent online.
       global.fetch = async (url, options = {}) => {
@@ -291,12 +295,14 @@ const { expect } = require('@playwright/test');
       global.flareTest.status = 405;
     });
     await page.locator('.ask-ai').click();
-    await page
-      .getByRole('alert')
-      .filter({ hasText: /405 \(POST\)/ })
-      .waitFor();
-    await audit('AI error dark');
-    await page.getByRole('button', { name: 'Intelligence settings', exact: true }).click();
+    await expect.poll(() => instance.evaluate(() => global.flareTest.opened.length)).toBe(1);
+    assert.equal(
+      new URL((await instance.evaluate(() => global.flareTest.opened))[0]).searchParams.get('q'),
+      'another-unmatched-fixture',
+    );
+    await reopen();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: /^Intelligence/ }).click();
     await page.getByRole('heading', { name: 'Intelligence', exact: true }).waitFor();
     assert.equal(
       await instance.evaluate(
@@ -313,7 +319,7 @@ const { expect } = require('@playwright/test');
       'Provider switch clears unsaved key',
     );
     await page.getByTitle('Close settings', { exact: true }).click();
-    checks.push('405 method-aware recovery, no automatic retries, provider-key isolation');
+    checks.push('405 exact-query Google fallback, no automatic retries, provider-key isolation');
     await instance.evaluate(() => {
       global.flareTest.status = 200;
       global.flareTest.delay = 1500;
@@ -338,6 +344,7 @@ const { expect } = require('@playwright/test');
     });
     await input.fill('keyboard-ai-fixture');
     await page.locator('.ask-ai').waitFor();
+    await expect(page.locator('.empty')).toContainText('No results', { timeout: 30000 });
     await input.press('Enter');
     await page.getByRole('region', { name: 'AI answer' }).waitFor();
     checks.push('AI cancellation and Enter on an unmatched query');
