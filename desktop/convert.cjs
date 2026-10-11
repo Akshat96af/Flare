@@ -8,6 +8,15 @@ const { fingerprint } = require('./operations.cjs');
 const formats = ['jpeg', 'png', 'webp', 'avif', 'gif', 'tiff'];
 async function pdfImages(file, pages = [1], scale = 1.5) {
   const { createCanvas, DOMMatrix, Path2D, ImageData } = require('@napi-rs/canvas');
+  // PDF.js can resolve a different native canvas version. Mixing their surfaces crashes Node.
+  class CanvasFactory {
+    create(width, height) {
+      const canvas = createCanvas(width, height);
+      return { canvas, context: canvas.getContext('2d') };
+    }
+    reset(surface, width, height) { surface.canvas.width = width; surface.canvas.height = height; }
+    destroy(surface) { surface.canvas.width = 0; surface.canvas.height = 0; surface.canvas = null; surface.context = null; }
+  }
   global.DOMMatrix ||= DOMMatrix;
   global.Path2D ||= Path2D;
   global.ImageData ||= ImageData;
@@ -16,6 +25,7 @@ async function pdfImages(file, pages = [1], scale = 1.5) {
       data: new Uint8Array(await fs.readFile(file)),
       isEvalSupported: false,
       useSystemFonts: true,
+      CanvasFactory,
     }),
     doc = await loading.promise;
   try {
