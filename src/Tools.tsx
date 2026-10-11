@@ -261,6 +261,8 @@ export default function Tools({
               Save to
               <button
                 className="folder-choice"
+                aria-label={destination ? 'Change output folder' : 'Choose an output folder'}
+                title={destination || undefined}
                 disabled={busy}
                 onClick={async () => {
                   const id = ++sequence.current;

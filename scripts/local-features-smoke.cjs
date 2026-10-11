@@ -118,12 +118,13 @@ const AxeBuilder = require('@axe-core/playwright').default;
       .toBe(true);
     const produced = (await fs.readdir(output)).find((name) => name.endsWith('.webp'));
     assert.equal((await require('sharp')(path.join(output, produced)).metadata()).width, 500);
-    await page.evaluate(() => window.flare.call('undo'));
-    assert.equal((await fs.readdir(output)).length, 0);
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect.poll(async () => await fs.readdir(output)).toEqual([]);
     checks.push(
       'Format-aware file actions, permission-denied OCR, real pixel recognition, prefilled resize, reviewed conversion and undo',
     );
-    await page.getByRole('button', { name: 'Close preview' }).click();
+    await page.getByRole('button', { name: 'Close activity' }).click();
     await input.fill('scan');
     await page.getByRole('button', { name: 'File actions for scan.pdf', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Extract pages', exact: true })).toBeVisible();
