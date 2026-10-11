@@ -62,6 +62,7 @@ test('content index returns real matching snippets and excludes private paths', 
   store.saveSettings({
     ...store.settings(),
     roots: [files],
+    contentRoots: [files],
     content: true,
     exclusions: ['node_modules'],
   });
@@ -245,7 +246,7 @@ test('photo search prefers date taken, labels fallback, and parses exact dates',
   const dir = await fixture('photo-date'),
     store = createStore(dir),
     search = new Search(store, () => {});
-  store.saveSettings({ ...store.settings(), roots: [dir] });
+  store.saveSettings({ ...store.settings(), roots: [dir], contentRoots: [dir] });
   for (const [id, modified] of [
     ['taken', Date.UTC(2024, 1, 1)],
     ['fallback', Date.UTC(2025, 5, 12)],
@@ -313,7 +314,7 @@ test('Office and PDF content extraction reads format-aware fixtures', async () =
 test('revoked search locations and disabled content take effect immediately', async () => {
   const dir = await fixture('revoked'),
     store = createStore(path.join(dir, 'state'));
-  store.saveSettings({ ...store.settings(), roots: [dir] });
+  store.saveSettings({ ...store.settings(), roots: [dir], contentRoots: [dir] });
   const search = new Search(store, () => {});
   search.put({
     id: 'file:test',

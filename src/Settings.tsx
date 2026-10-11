@@ -321,6 +321,13 @@ export default function Settings({
               </button>
             </div>
             <div className="location-list">
+              {(value.allDrives ? value.driveRoots : []).map((root) => (
+                <div className="location" key={'drive:' + root}>
+                  <Folder size={17} />
+                  <span>{root}</span>
+                  <span className="muted">Names only</span>
+                </div>
+              ))}
               {value.roots.map((root) => (
                 <div className="location" key={root}>
                   <Folder size={17} />
@@ -347,6 +354,7 @@ export default function Settings({
                     onChange(
                       await bridge.call('settings', {
                         roots: drives.map((x: any) => x.path),
+                        allDrives: true,
                         setup: true,
                       }),
                     );
@@ -358,8 +366,86 @@ export default function Settings({
             </div>
             <div className="setting-row">
               <div>
+                <label>Connected drives</label>
+                <span>Names and locations. New drives are discovered automatically.</span>
+              </div>
+              <Toggle
+                label="Search connected drives"
+                checked={value.allDrives}
+                onChange={() => save({ allDrives: !value.allDrives })}
+              />
+            </div>
+            <div className="section-heading">
+              <h3>Allowed folders</h3>
+            </div>
+            <div className="location-list">
+              {[...new Set([...value.contentRoots, ...value.trustedRoots])].map((root) => (
+                <div className="location permission-location" key={root}>
+                  <Shield size={17} />
+                  <span title={root}>{root}</span>
+                  <select
+                    aria-label={'Access for ' + root}
+                    value={value.trustedRoots.includes(root) ? 'assistant' : 'content'}
+                    onChange={(event) =>
+                      run(async () =>
+                        onChange(
+                          await bridge.call('folder-permission', {
+                            folder: root,
+                            level: event.target.value,
+                          }),
+                        ),
+                      )
+                    }
+                  >
+                    <option value="names">Names only</option>
+                    <option value="content">Local contents</option>
+                    <option value="assistant">Assistant allowed</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div className="button-row">
+              <button
+                className="subtle"
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    const [folder] = await bridge.call('pick', { kind: 'folder' });
+                    if (!folder) return;
+                    await bridge.call('settings', {
+                      roots: [...new Set([...value.roots, folder])],
+                      setup: true,
+                    });
+                    onChange(await bridge.call('folder-permission', { folder, level: 'content' }));
+                  })
+                }
+              >
+                <Folder size={16} /> Allow local contents
+              </button>
+              <button
+                className="subtle"
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    const [folder] = await bridge.call('pick', { kind: 'folder' });
+                    if (!folder) return;
+                    await bridge.call('settings', {
+                      roots: [...new Set([...value.roots, folder])],
+                      setup: true,
+                    });
+                    onChange(
+                      await bridge.call('folder-permission', { folder, level: 'assistant' }),
+                    );
+                  })
+                }
+              >
+                <Shield size={16} /> Allow assistant folder
+              </button>
+            </div>
+            <div className="setting-row">
+              <div>
                 <label>Search inside documents</label>
-                <span>Text, PDFs, Office documents and code.</span>
+                <span>Only folders with local content or assistant access.</span>
               </div>
               <Toggle
                 label="Search document contents"
@@ -418,8 +504,8 @@ export default function Settings({
                   setModel(e.target.value === value.ai.provider ? value.ai.model : '');
                   setConnected('');
                   setKey('');
-                  setSpeech(false);
-                  setSpeechMode('fallback');
+                  setSpeech(e.target.value === 'groq');
+                  setSpeechMode(e.target.value === 'groq' ? 'online' : 'fallback');
                   setSpeechModel('');
                   setError('');
                 }}
@@ -427,6 +513,7 @@ export default function Settings({
                 <option value="off">Keep AI off</option>
                 <option value="gemini">Google Gemini</option>
                 <option value="openrouter">OpenRouter (free models)</option>
+                <option value="groq">Groq (Whisper voice)</option>
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic Claude</option>
                 <option value="local">On this computer (Ollama)</option>
@@ -628,7 +715,7 @@ export default function Settings({
                   </div>
                   <select
                     id="voice-recognition"
-                    disabled={busy || !['gemini', 'openai'].includes(provider)}
+                    disabled={busy || !['gemini', 'openai', 'groq'].includes(provider)}
                     value={!speech ? 'windows' : speechMode}
                     onChange={(event) => {
                       const mode = event.target.value;
@@ -645,7 +732,7 @@ export default function Settings({
                     <option value="online">Online</option>
                   </select>
                 </div>
-                {speech && ['gemini', 'openai'].includes(provider) && (
+                {speech && ['gemini', 'openai', 'groq'].includes(provider) && (
                   <>
                     <label className="field-label">
                       Speech model
@@ -656,7 +743,11 @@ export default function Settings({
                         onChange={(event) => setSpeechModel(event.target.value)}
                       >
                         <option value="">
-                          {provider === 'gemini' ? 'Same as Intelligence' : 'Whisper'}
+                          {provider === 'gemini'
+                            ? 'Same as Intelligence'
+                            : provider === 'groq'
+                              ? 'Whisper Turbo'
+                              : 'Whisper'}
                         </option>
                         {[...new Set([...speechModels, ...(speechModel ? [speechModel] : [])])].map(
                           (id) => (

@@ -33,6 +33,7 @@ import {
 import { bridge, desktop, basename, fileSize } from './bridge';
 import type { Result, Settings as Prefs, IndexStatus, Operation } from './types';
 import Settings from './Settings';
+import TypedAnswer from './TypedAnswer';
 import Tools, { Plan } from './Tools';
 import Voice from './Voice';
 import QuickShare from './QuickShare';
@@ -112,6 +113,10 @@ export default function App() {
     document.documentElement.dataset.environment = desktop ? 'desktop' : 'browser';
     const disposers = [
       bridge.on('share', (data) => setShareActive(data.active)),
+      bridge.on('settings', (data) => {
+        setSettings(data);
+        setPreview(null);
+      }),
       bridge.on('activation', (data) => {
         if (data.contentHeight)
           document.documentElement.style.setProperty('--content-height', data.contentHeight + 'px');
@@ -126,6 +131,21 @@ export default function App() {
         }
         window.dispatchEvent(new Event('flare:activate'));
         input.current?.focus();
+        if (data.ticket)
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              bridge
+                .call('launcher-ready', {
+                  ticket: data.ticket,
+                  animate: data.animate,
+                  height: Math.ceil(panel.current?.offsetHeight || 100) + 74,
+                })
+                .catch(() => {});
+            }),
+          );
+      }),
+      bridge.on('shown', (data) => {
+        if (data.animate) window.dispatchEvent(new Event('flare:shown'));
       }),
       bridge.on('dismiss', () => {
         sequence.current++;
@@ -254,6 +274,10 @@ export default function App() {
     kind,
     view,
     settings?.roots,
+    settings?.driveRoots,
+    settings?.allDrives,
+    settings?.contentRoots,
+    settings?.trustedRoots,
     settings?.content,
     settings?.clipboard,
     index.state === 'ready',
@@ -281,7 +305,39 @@ export default function App() {
     }
   };
   const handleIntent = async (intent: any, original = query) => {
-    if (intent?.kind === 'music') {
+    if (intent?.kind === 'document') {
+      const id = ++aiSequence.current;
+      aiPending.current = true;
+      setAiBusy(true);
+      try {
+        let result;
+        if (/^(this|this (?:file|document)|document|file)$/i.test(intent.query)) {
+          let documentId = preview?.id;
+          if (!documentId) {
+            const files = await bridge.call('pick', { kind: 'document' });
+            documentId = files[0];
+          }
+          if (!documentId) return;
+          result = await bridge.call('document-summary', { id: documentId });
+        } else result = await bridge.call('document-find', { query: intent.query });
+        if (id !== aiSequence.current) return;
+        if (result.kind === 'search') {
+          setView('search');
+          setQuery(result.query);
+          setNotice('Choose a document, then select Summarize document in its preview.');
+        } else {
+          setView('search');
+          setAiAnswer(result.text);
+        }
+      } catch (error) {
+        if (id === aiSequence.current) setError((error as Error).message);
+      } finally {
+        if (id === aiSequence.current) {
+          aiPending.current = false;
+          setAiBusy(false);
+        }
+      }
+    } else if (intent?.kind === 'music') {
       const id = ++aiSequence.current;
       aiPending.current = true;
       setAiBusy(true);
@@ -331,7 +387,8 @@ export default function App() {
         if (value.intent) await handleIntent(value.intent, original);
         setNotice(value.message || '');
       } catch {
-        await googleFallback(original, id);
+        if (intent.kind === 'media') setError('Open your music player and start a song first.');
+        else await googleFallback(original, id);
       }
     }
   };
@@ -764,7 +821,7 @@ export default function App() {
                     <Copy size={15} />
                   </button>
                 </div>
-                <p>{aiAnswer}</p>
+                <TypedAnswer key={aiAnswer} text={aiAnswer} />
               </section>
             )}
             {preview && (
@@ -779,7 +836,56 @@ export default function App() {
                     <X size={16} />
                   </button>
                 </div>
-                {preview.image ? (
+                {!preview.contentAllowed ? (
+                  <div className="file-access">
+                    <ShieldCheck size={24} />
+                    <p>Contents are private</p>
+                    <div className="button-row">
+                      <button
+                        className="subtle"
+                        disabled={previewBusy}
+                        onClick={() =>
+                          act(async () => {
+                            setPreviewBusy(true);
+                            try {
+                              setPreview(
+                                await bridge.call('file-permission', {
+                                  id: preview.id,
+                                  level: 'once',
+                                }),
+                              );
+                            } finally {
+                              setPreviewBusy(false);
+                            }
+                          })
+                        }
+                      >
+                        <Eye size={15} /> Allow this file
+                      </button>
+                      <button
+                        className="subtle"
+                        disabled={previewBusy}
+                        onClick={() =>
+                          act(async () => {
+                            setPreviewBusy(true);
+                            try {
+                              setPreview(
+                                await bridge.call('file-permission', {
+                                  id: preview.id,
+                                  level: 'content',
+                                }),
+                              );
+                            } finally {
+                              setPreviewBusy(false);
+                            }
+                          })
+                        }
+                      >
+                        <FolderOpen size={15} /> Trust folder contents
+                      </button>
+                    </div>
+                  </div>
+                ) : preview.image ? (
                   <img className="file-preview" src={preview.image} alt={preview.name} />
                 ) : preview.text ? (
                   <pre>{preview.text}</pre>
@@ -788,6 +894,30 @@ export default function App() {
                     <FileText size={32} />
                     <p>No visual preview for this file.</p>
                   </div>
+                )}
+                {/^(TXT|MD|PDF|DOCX|PPTX|XLSX|CSV)$/.test(preview.type) && (
+                  <button
+                    className="subtle"
+                    disabled={aiBusy}
+                    onClick={() =>
+                      act(async () => {
+                        const id = ++aiSequence.current;
+                        aiPending.current = true;
+                        setAiBusy(true);
+                        try {
+                          const result = await bridge.call('document-summary', { id: preview.id });
+                          if (id === aiSequence.current) setAiAnswer(result.text);
+                        } finally {
+                          if (id === aiSequence.current) {
+                            aiPending.current = false;
+                            setAiBusy(false);
+                          }
+                        }
+                      })
+                    }
+                  >
+                    <Sparkles size={15} /> Summarize document
+                  </button>
                 )}
                 <button
                   className="metadata-toggle"
@@ -873,6 +1003,10 @@ export default function App() {
             onTranscript={(text) => {
               reset();
               setQuery(text);
+              act(async () => {
+                const intent = await bridge.call('voice-submit', { query: text });
+                await handleIntent(intent, text);
+              });
             }}
           />
         )}

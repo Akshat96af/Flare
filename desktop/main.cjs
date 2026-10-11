@@ -29,10 +29,24 @@ const { QuickShare } = require('./share.cjs');
 const { openService, googleFallbackTarget } = require('./services.cjs');
 const { resolveMusic, openTrack } = require('./music.cjs');
 const { randomUUID } = require('node:crypto');
+const { FilePermissions } = require('./permissions.cjs');
+const { searchRoots, within, excluded } = require('./scope.cjs');
 const tracks = new Map();
 const external = {
   hasProtocol: (url) => !!app.getApplicationNameForProtocol(url),
   openExternal: (url) => shell.openExternal(url),
+  requestPlayback: (track) =>
+    powershell(
+      'media',
+      {
+        action: 'play',
+        service: track.service,
+        title: track.title,
+        artist: track.artist,
+        waitMs: 6000,
+      },
+      12000,
+    ),
 };
 
 const isolated = process.env.FLARE_DATA_DIR;
@@ -54,6 +68,10 @@ let win,
   holding,
   aiRequest,
   sharing,
+  permissions,
+  driveTimer,
+  openingTimer,
+  activationId = 0,
   shortcutError = '',
   quitting = false,
   conversionWorker,
@@ -85,17 +103,26 @@ function position() {
     height: Math.min(win.getBounds().height, work.height - 140),
   });
 }
-function show() {
+function show(mode = 'search') {
+  if (mode !== 'settings') mode = 'search';
   position();
-  win.show();
-  win.focus();
+  const ticket = ++activationId;
+  clearTimeout(openingTimer);
+  const animate = !win.isVisible();
   send('activation', {
-    mode: 'search',
+    mode,
+    ticket,
+    animate,
     contentHeight: Math.max(
       100,
       Math.min(560, screen.getDisplayMatching(win.getBounds()).workArea.height - 340),
     ),
   });
+  openingTimer = setTimeout(() => {
+    if (ticket !== activationId || win.isDestroyed()) return;
+    win.show();
+    win.focus();
+  }, 1200);
 }
 function register(shortcut) {
   globalShortcut.unregisterAll();
@@ -124,6 +151,9 @@ function register(shortcut) {
   return ok;
 }
 function hideLauncher() {
+  activationId++;
+  clearTimeout(openingTimer);
+  permissions?.clear();
   tracks.clear();
   holding?.hold.cancel();
   send('hold', { progress: 0 });
@@ -140,53 +170,78 @@ function stopVoice(cancel = false) {
     voice = null;
   } else voice.stdin.end('\n');
 }
-function localVoice() {
+async function localVoice(bytes) {
   stopVoice(true);
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-File',
-        scriptPath('speech.ps1'),
-        ...(store.settings().voiceMode === 'push' ? ['-PushToTalk'] : []),
-      ],
-      { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] },
-    );
-    voice = child;
-    let out = '',
-      err = '';
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error('Voice recognition timed out.'));
-    }, 35000);
-    let notified = false;
-    child.stdout.on('data', (x) => {
-      out += x;
-      if (!notified && out.includes('FLARE_SPEECH_READY')) {
-        notified = true;
-        if (voice === child) send('voice-ready', {});
-      }
+  const controller = new AbortController();
+  voiceRequest = controller;
+  const directory = await fs.mkdtemp(path.join(app.getPath('temp'), 'flare-speech-'));
+  const file = path.join(directory, 'recording.wav');
+  try {
+    const audio = require('./speech-audio.cjs').validatedWav(bytes);
+    await fs.writeFile(file, audio);
+    controller.signal.throwIfAborted();
+    return await new Promise((resolve, reject) => {
+      const child = spawn(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          scriptPath('speech.ps1'),
+          '-AudioFile',
+          file,
+          ...(store.settings().voiceMode === 'push' ? ['-PushToTalk'] : []),
+        ],
+        { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] },
+      );
+      voice = child;
+      const abort = () => child.kill();
+      controller.signal.addEventListener('abort', abort, { once: true });
+      let out = '',
+        err = '';
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill();
+      }, 35000);
+      let notified = false;
+      child.stdout.on('data', (x) => {
+        out += x;
+        if (!notified && out.includes('FLARE_SPEECH_READY')) {
+          notified = true;
+          if (voice === child) send('voice-ready', {});
+        }
+      });
+      child.stderr.on('data', (x) => (err += x));
+      child.on('error', (e) => {
+        clearTimeout(timer);
+        reject(e);
+      });
+      child.on('close', (code) => {
+        controller.signal.removeEventListener('abort', abort);
+        clearTimeout(timer);
+        if (voice === child) voice = null;
+        if (code !== 0)
+          return reject(
+            new Error(
+              timedOut
+                ? 'Voice recognition timed out.'
+                : err.trim().slice(0, 300) || 'Local speech stopped.',
+            ),
+          );
+        try {
+          resolve(JSON.parse(out.replace('FLARE_SPEECH_READY', '').trim()).text || '');
+        } catch {
+          reject(new Error('Local speech returned no transcript.'));
+        }
+      });
     });
-    child.stderr.on('data', (x) => (err += x));
-    child.on('error', (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    child.on('exit', (code) => {
-      clearTimeout(timer);
-      if (voice === child) voice = null;
-      if (code !== 0) return reject(new Error(err.trim().slice(0, 300) || 'Local speech stopped.'));
-      try {
-        resolve(JSON.parse(out.replace('FLARE_SPEECH_READY', '').trim()).text || '');
-      } catch {
-        reject(new Error('Local speech returned no transcript.'));
-      }
-    });
-  });
+  } finally {
+    if (voiceRequest === controller) voiceRequest = null;
+    await fs.rm(directory, { recursive: true, force: true });
+  }
 }
 async function approvedFile(value) {
   const entry = search.get(value),
@@ -221,6 +276,8 @@ async function preview(id) {
   if (!stat.isFile() || stat.size > 100 * 1024 * 1024)
     throw new Error('This preview is unavailable.');
   const result = {
+    id,
+    contentAllowed: permissions.allows(file),
     name: path.basename(file),
     path: file,
     size: stat.size,
@@ -228,6 +285,8 @@ async function preview(id) {
     created: stat.birthtimeMs,
     type: path.extname(file).slice(1).toUpperCase(),
   };
+  if (!result.contentAllowed) return result;
+  await permissions.validate(file);
   if (/\.(jpg|jpeg|png|webp|avif|gif|tiff|bmp)$/i.test(file)) {
     const sharp = require('sharp'),
       bytes = await fs.readFile(file),
@@ -314,6 +373,11 @@ async function query(q, kind) {
   );
 }
 async function executeIntent(intent) {
+  if (intent.kind === 'media') {
+    const result = await powershell('media', { action: intent.action, service: intent.service });
+    if (!result.ok) throw new Error(result.message || 'No controllable music player is active.');
+    return { message: result.message || 'Playback updated' };
+  }
   if (intent.kind === 'service') {
     const result = await openService(intent, external);
     hideLauncher();
@@ -377,6 +441,7 @@ async function saveSettings(patch) {
     'setup',
     'confirmConversions',
     'glass',
+    'allDrives',
   ])
     if (patch[key] !== undefined) {
       if (typeof patch[key] !== 'boolean') throw new Error('Invalid setting.');
@@ -408,6 +473,12 @@ async function saveSettings(patch) {
     }
     next.roots = patch.roots;
   }
+  for (const key of ['contentRoots', 'trustedRoots']) {
+    if (patch[key] === undefined) continue;
+    if (!Array.isArray(patch[key]) || patch[key].some((root) => !current[key].includes(root)))
+      throw new Error('Grant folder access through its permission dialog.');
+    next[key] = patch[key];
+  }
   if (patch.exclusions) {
     if (
       !Array.isArray(patch.exclusions) ||
@@ -422,24 +493,174 @@ async function saveSettings(patch) {
     app.setLoginItemSettings({ openAtLogin: next.startup, args: ['--background'] });
   }
   nativeTheme.themeSource = next.theme;
+  const scopeChanged = [
+    'roots',
+    'content',
+    'exclusions',
+    'allDrives',
+    'contentRoots',
+    'trustedRoots',
+  ].some((key) => JSON.stringify(next[key]) !== JSON.stringify(current[key]));
+  if (scopeChanged) {
+    await search.stop();
+    permissions.clear();
+    aiRequest?.abort();
+    search.nativeCache.clear();
+  }
   store.saveSettings(next);
   if (next.clipboard !== current.clipboard && !next.clipboard)
     store.db.prepare("DELETE FROM entries WHERE kind='clipboard'").run();
-  if (
-    next.roots !== current.roots ||
-    next.content !== current.content ||
-    next.exclusions !== current.exclusions
-  ) {
+  if (scopeChanged) {
     await search.stop();
     if (!next.content) {
       store.db.exec("DELETE FROM content_fts; UPDATE entries SET content='' WHERE kind='file'");
     }
-    search.start(next.content !== current.content && next.content);
+    search.start(true);
   }
   return next;
 }
+async function refreshDrives() {
+  if (process.platform !== 'win32') return;
+  const found = await powershell('drives');
+  const roots = (Array.isArray(found) ? found : found ? [found] : [])
+    .map((item) => item.path)
+    .filter((root) => typeof root === 'string' && /^[A-Z]:\\$/i.test(root));
+  const current = store.settings();
+  const volumes = Object.fromEntries(
+    (Array.isArray(found) ? found : found ? [found] : []).map((item) => [
+      item.path,
+      item.volume || '',
+    ]),
+  );
+  if (
+    JSON.stringify(roots) === JSON.stringify(current.driveRoots) &&
+    JSON.stringify(volumes) === JSON.stringify(current.driveVolumes)
+  )
+    return;
+  const changed = Object.keys(current.driveVolumes).filter(
+    (root) => current.driveVolumes[root] !== volumes[root],
+  );
+  await search.stop();
+  permissions.clear();
+  aiRequest?.abort();
+  search.nativeCache.clear();
+  store.saveSettings({
+    ...current,
+    driveRoots: roots,
+    driveVolumes: volumes,
+    contentRoots: current.contentRoots.filter(
+      (folder) => !changed.some((root) => within(folder, root)),
+    ),
+    trustedRoots: current.trustedRoots.filter(
+      (folder) => !changed.some((root) => within(folder, root)),
+    ),
+  });
+  send('settings', store.settings());
+  if (current.setup || !isolated) search.start();
+}
+async function grantFolder(folder, level) {
+  if (!['names', 'content', 'assistant'].includes(level)) throw new Error('Invalid folder access.');
+  const real = await fs.realpath(folder);
+  const settings = store.settings();
+  if (
+    (!searchRoots(settings).some((root) => within(real, root)) && !granted.has(real)) ||
+    !(await fs.stat(real)).isDirectory() ||
+    require('./native.cjs').unsafeFile(real) ||
+    excluded(real, settings.exclusions)
+  )
+    throw new Error('Choose a personal folder from search or the folder picker.');
+  if (level !== 'names') {
+    const generation = permissions.generation;
+    const response = await dialog.showMessageBox(win, {
+      type: 'question',
+      title: 'Folder access',
+      message:
+        level === 'assistant'
+          ? 'Allow assistant access to this folder?'
+          : 'Allow local content search?',
+      detail:
+        real +
+        '\n\n' +
+        (level === 'assistant'
+          ? 'Flare can search and preview contents, send selected documents to your AI provider, and prepare file tasks. Changes still require review. Excluded and protected files stay blocked.'
+          : 'Flare can read and index contents locally. Sending a document to an online AI still asks separately.'),
+      buttons: ['Cancel', 'Allow folder'],
+      defaultId: 0,
+      cancelId: 0,
+    });
+    if (response.response !== 1 || permissions.generation !== generation) return store.settings();
+  }
+  if (
+    level === 'names' &&
+    [...settings.contentRoots, ...settings.trustedRoots].some(
+      (root) => root !== real && within(real, root),
+    )
+  )
+    throw new Error('Remove the parent folder permission first.');
+  await search.stop();
+  permissions.clear();
+  aiRequest?.abort();
+  const next = {
+    ...settings,
+    contentRoots: settings.contentRoots.filter((root) =>
+      level === 'names' ? !within(root, real) : root !== real,
+    ),
+    trustedRoots: settings.trustedRoots.filter((root) =>
+      level === 'names' ? !within(root, real) : root !== real,
+    ),
+  };
+  if (level === 'content') next.contentRoots.push(real);
+  if (level === 'assistant') next.trustedRoots.push(real);
+  store.saveSettings(next);
+  search.start(true);
+  send('settings', next);
+  return next;
+}
+async function summarize(id) {
+  const file = await approvedFile(id);
+  const selected = store.settings().ai;
+  if (selected.provider === 'off')
+    throw new Error('Connect an AI model in Intelligence settings first.');
+  aiRequest?.abort();
+  const controller = new AbortController();
+  aiRequest = controller;
+  try {
+    const checked = await permissions.request(file, selected.provider !== 'local');
+    controller.signal.throwIfAborted();
+    if (checked.stat.size > 12 * 1024 * 1024) throw new Error('Choose a document below 12 MB.');
+    const text = await require('./extract.cjs').extract(checked.file, checked.stat.size);
+    controller.signal.throwIfAborted();
+    if (!text.trim())
+      throw new Error('No readable text found. Scanned PDFs need OCR before summarizing.');
+    return await ai.plan(
+      'Summarize the document, including key points, decisions and any action items. Say when the excerpt is incomplete.',
+      selected,
+      secret(selected.provider),
+      controller.signal,
+      {
+        document: {
+          name: path.basename(file),
+          text: text.slice(0, 48000),
+          truncated: text.length > 48000,
+        },
+      },
+    );
+  } finally {
+    if (aiRequest === controller) aiRequest = null;
+  }
+}
 async function dispatch(method, data = {}) {
   switch (method) {
+    case 'launcher-ready': {
+      if (data.ticket !== activationId) return false;
+      clearTimeout(openingTimer);
+      await dispatch('resize', { height: data.height });
+      position();
+      win.show();
+      win.focus();
+      send('shown', { animate: !!data.animate });
+      return true;
+    }
     case 'snapshot':
       return {
         settings: store.settings(),
@@ -507,6 +728,27 @@ async function dispatch(method, data = {}) {
     }
     case 'preview':
       return preview(data.id);
+    case 'file-permission': {
+      const file = await approvedFile(data.id);
+      if (data.level && data.level !== 'once') await grantFolder(path.dirname(file), data.level);
+      else await permissions.request(file);
+      return preview(data.id);
+    }
+    case 'folder-permission':
+      return grantFolder(data.folder, data.level);
+    case 'document-summary':
+      return summarize(data.id);
+    case 'document-find': {
+      const text = require('./commands.cjs').validateIntent({
+        kind: 'document',
+        query: data.query,
+      }).query;
+      const results = (await search.queryAsync(text, 'file')).filter(
+        (item) => item.kind === 'file' && /\.(txt|md|pdf|docx|pptx|xlsx|csv)$/i.test(item.path),
+      );
+      if (results.length === 1) return summarize(results[0].id);
+      return { kind: 'search', query: text };
+    }
     case 'result-action': {
       const item = search.get(data.id);
       if (!item || !['file', 'folder', 'app'].includes(item.kind) || item.path.startsWith('shell:'))
@@ -609,7 +851,9 @@ async function dispatch(method, data = {}) {
       return true;
     case 'ai-save': {
       if (
-        !['off', 'openai', 'gemini', 'anthropic', 'local', 'openrouter'].includes(data.provider) ||
+        !['off', 'openai', 'gemini', 'anthropic', 'local', 'openrouter', 'groq'].includes(
+          data.provider,
+        ) ||
         typeof data.model !== 'string' ||
         data.model.length > 150
       )
@@ -632,6 +876,12 @@ async function dispatch(method, data = {}) {
         !['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'].includes(speechModel)
       )
         throw new Error('Choose a supported speech model.');
+      if (
+        data.provider === 'groq' &&
+        speechModel &&
+        !['whisper-large-v3', 'whisper-large-v3-turbo'].includes(speechModel)
+      )
+        throw new Error('Choose a supported Whisper model.');
       if (data.key && key) {
         if (!safeStorage.isEncryptionAvailable())
           throw new Error('Windows credential encryption is unavailable.');
@@ -640,7 +890,7 @@ async function dispatch(method, data = {}) {
       prefs.ai = {
         provider: data.provider,
         model,
-        speechCloud: ['gemini', 'openai'].includes(data.provider) && !!data.speechCloud,
+        speechCloud: ['gemini', 'openai', 'groq'].includes(data.provider) && !!data.speechCloud,
         speechMode,
         speechModel,
       };
@@ -654,12 +904,23 @@ async function dispatch(method, data = {}) {
       aiRequest = controller;
       try {
         const local = interpretLocal(data.query);
-        if (local && ['music', 'service', 'launch', 'system', 'tool'].includes(local.kind))
+        if (
+          local &&
+          ['music', 'service', 'launch', 'system', 'tool', 'document', 'media'].includes(local.kind)
+        )
           return local;
         return await ai.plan(data.query, settings, secret(settings.provider), controller.signal);
       } finally {
         if (aiRequest === controller) aiRequest = null;
       }
+    }
+    case 'voice-submit': {
+      const intent = interpretLocal(data.query);
+      if (intent) return intent;
+      if (store.settings().ai.provider !== 'off') return dispatch('ai-plan', data);
+      if (typeof data.query !== 'string' || data.query.length > 500)
+        throw new Error('Keep voice commands short.');
+      return { kind: 'search', query: data.query };
     }
     case 'ai-cancel':
       aiRequest?.abort();
@@ -685,7 +946,11 @@ async function dispatch(method, data = {}) {
     }
     case 'tool-plan': {
       if (['organize', 'cleanup'].includes(data.tool)) {
-        if (!granted.has(data.folder)) throw new Error('Choose a folder first.');
+        if (
+          !granted.has(data.folder) &&
+          !require('./scope.cjs').assistantAllowed(data.folder, store.settings())
+        )
+          throw new Error('Choose or trust a folder first.');
         return operations.planFolder(data.folder, data.tool, data.mode);
       }
       const files = [];
@@ -738,8 +1003,10 @@ async function dispatch(method, data = {}) {
     case 'cancel':
       operations.cancel = true;
       return true;
+    case 'voice-recorded':
+      return localVoice(data.bytes);
     case 'voice-start':
-      return localVoice();
+      throw new Error('Record microphone audio before recognition.');
     case 'voice-status':
       return powershell('speech-capabilities');
     case 'voice-stop':
@@ -789,6 +1056,7 @@ app
   .then(async () => {
     store = createStore(app.getPath('userData'));
     search = new Search(store, send);
+    permissions = new FilePermissions(store, (options) => dialog.showMessageBox(win, options));
     operations = new Operations(store, send);
     sharing = new QuickShare((status) => {
       send('share', { active: status.active, downloads: status.downloads });
@@ -813,6 +1081,7 @@ app
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        backgroundThrottling: false,
       },
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -849,8 +1118,7 @@ app
         {
           label: 'Settings',
           click: () => {
-            show();
-            send('activation', { mode: 'settings' });
+            show('settings');
           },
         },
         { type: 'separator' },
@@ -873,7 +1141,14 @@ app
     nativeTheme.on('updated', () => send('theme', { dark: nativeTheme.shouldUseDarkColors }));
     await search.apps();
     await search.bookmarks();
+    if (!isolated) {
+      await refreshDrives().catch(() => {});
+      store.saveSettings({ ...store.settings(), setup: true });
+    }
     if (store.settings().setup) search.start();
+    driveTimer = setInterval(() => {
+      if (!isolated) refreshDrives().catch(() => {});
+    }, 60000);
     if (!process.argv.includes('--background')) show();
     ready = true;
     let lastClipboard = '';
@@ -917,6 +1192,7 @@ app
       if (holding) clearInterval(holding.timer);
       clearInterval(clipboardTimer);
       clearInterval(rescan);
+      clearInterval(driveTimer);
       globalShortcut.unregisterAll();
     });
   })

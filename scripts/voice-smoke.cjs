@@ -44,11 +44,12 @@ const AxeBuilder = require('@axe-core/playwright').default;
           state.status++;
           return { available: true };
         }
-        if (method === 'voice-start') {
+        if (method === 'voice-recorded') {
           state.starts++;
-          return new Promise((resolve) => {
-            state.resolve = resolve;
-          });
+          const bytes = Buffer.from(data.bytes);
+          if (bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.readUInt32LE(24) !== 16000)
+            throw new Error('Invalid captured WAV');
+          return 'open Claude';
         }
         if (method === 'voice-stop') {
           state.resolve?.('open Claude');
@@ -63,6 +64,23 @@ const AxeBuilder = require('@axe-core/playwright').default;
       });
       global.fetch = async (url, options) => {
         const state = global.voiceFixture;
+        if (url.includes('api.groq.com')) {
+          if (options.method === 'GET')
+            return new Response(
+              JSON.stringify({
+                data: [
+                  { id: 'openai/gpt-oss-20b' },
+                  { id: 'whisper-large-v3-turbo' },
+                  { id: 'whisper-large-v3' },
+                ],
+              }),
+            );
+          state.uploads++;
+          state.url = url;
+          state.speechModel = options.body.get('model');
+          state.bytes = options.body.get('file').size;
+          return new Response(JSON.stringify({ text: 'brightness 100' }));
+        }
         if (options.method === 'GET')
           return new Response(
             JSON.stringify({
@@ -130,17 +148,14 @@ const AxeBuilder = require('@axe-core/playwright').default;
     });
     const voice = page.getByRole('button', { name: 'Voice command', exact: true });
     await voice.click();
-    await expect.poll(() => instance.evaluate(() => global.voiceFixture.starts)).toBe(1);
-    await expect(page.getByRole('heading', { name: 'Getting ready.' })).toBeVisible();
-    await instance.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].webContents.send('flare:voice-ready', {}),
-    );
     await page.getByRole('heading', { name: 'Listening.' }).waitFor();
+    await page.getByText('Microphone signal detected', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Stop listening' }).click();
     await expect(page.getByLabel('Voice transcript')).toHaveValue('open Claude');
+    assert.equal(await instance.evaluate(() => global.voiceFixture.starts), 1);
     assert.equal(await instance.evaluate(() => global.voiceFixture.uploads), 0);
     checks.push(
-      'Windows listening indicator waits for native readiness; local success uploads nothing',
+      'One selected microphone feeds the meter and recorded WAV recognition; local success uploads nothing',
     );
     await page.getByTitle('Cancel voice', { exact: true }).click();
     await page.evaluate(() => {
@@ -220,7 +235,7 @@ const AxeBuilder = require('@axe-core/playwright').default;
     await page.getByRole('button', { name: 'Stop listening' }).click();
     await page.getByText(/No microphone signal detected/).waitFor();
     assert.equal(await instance.evaluate(() => global.voiceFixture.uploads), 1);
-    await expect(page.getByRole('button', { name: 'Voice settings' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Voice settings' }).first()).toBeVisible();
     await page.evaluate(() => {
       window.voiceTest.gain = 0.008;
     });
@@ -244,6 +259,39 @@ const AxeBuilder = require('@axe-core/playwright').default;
       .toBe(true);
     checks.push(
       'Retry works; Escape aborts pending online transcription and releases all audio tracks',
+    );
+    await instance.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      win.show();
+      win.focus();
+    });
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: /^Intelligence/ }).click();
+    await page.getByLabel('Use a model', { exact: true }).selectOption('groq');
+    await page.getByLabel('API key', { exact: true }).fill('fixture-key');
+    await page.getByRole('button', { name: 'Check connection', exact: true }).click();
+    await page.getByText('1 models available', { exact: true }).waitFor();
+    await expect(page.getByLabel('Model', { exact: true })).toHaveValue('openai/gpt-oss-20b');
+    await expect(page.getByLabel('Voice recognition', { exact: true })).toHaveValue('online');
+    await page.getByRole('button', { name: 'Save connection', exact: true }).click();
+    await page.getByText('Saved', { exact: true }).waitFor();
+    await page.getByTitle('Close settings', { exact: true }).click();
+    await voice.click();
+    await page.getByRole('heading', { name: 'Listening.' }).waitFor();
+    await page.getByText('Microphone signal detected', { exact: true }).waitFor();
+    await page.waitForTimeout(400);
+    await page.getByRole('button', { name: 'Stop listening' }).click();
+    await expect(page.getByLabel('Voice transcript')).toHaveValue('brightness 100');
+    const groq = await instance.evaluate(() => ({
+      url: global.voiceFixture.url,
+      model: global.voiceFixture.speechModel,
+      bytes: global.voiceFixture.bytes,
+    }));
+    assert.equal(groq.url, 'https://api.groq.com/openai/v1/audio/transcriptions');
+    assert.equal(groq.model, 'whisper-large-v3-turbo');
+    assert.ok(groq.bytes > 100);
+    checks.push(
+      'Groq setup saves namespaced chat models and uploads captured audio to Whisper Turbo',
     );
     assert.deepEqual(errors, []);
     const report = {

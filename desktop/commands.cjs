@@ -19,6 +19,10 @@ const commandWords = [
   'spotify',
   'youtube',
   'google',
+  'summarize',
+  'summarise',
+  'pause',
+  'resume',
 ];
 const serviceWords = ['spotify', 'apple music', 'youtube', 'google'];
 function correctKeyword(value, choices) {
@@ -94,6 +98,17 @@ function parseLocal(input) {
   )
     return null;
   text = normalizeCommand(text);
+  const document = text.match(/^(?:summarize|summarise|summary of)\s+(.+)$/i);
+  if (document) return validateIntent({ kind: 'document', query: document[1] });
+  const media = text.match(
+    /^(pause|resume|stop|next|previous)(?:\s+(?:the\s+)?(?:music|song|track|playback))?(?:\s+(?:on\s+)?(spotify|apple music))?$/i,
+  );
+  if (media)
+    return validateIntent({
+      kind: 'media',
+      action: media[1].toLowerCase(),
+      service: (media[2] || '').toLowerCase().replace(/\s/g, ''),
+    });
   // Compound requests need interpretation, not partial execution of a local shortcut.
   if (
     /\b(?:and then|then|and (?:open|play|set|delete|find|search|organize|organise))\b/i.test(text)
@@ -144,6 +159,8 @@ function parseLocal(input) {
     };
   m = text.match(/^open\s+(.+)$/i);
   if (m) {
+    if (/^(?:the )?(?:web )?browser$/i.test(m[1]))
+      return { kind: 'service', service: 'google', query: '' };
     if (/^apple music$/i.test(m[1])) return { kind: 'service', service: 'applemusic', query: '' };
     if (Object.hasOwn(services, m[1].toLowerCase()))
       return { kind: 'service', service: m[1].toLowerCase(), query: '' };
@@ -170,6 +187,20 @@ function validateIntent(intent) {
   if (!intent || typeof intent !== 'object' || Array.isArray(intent))
     throw new Error('AI did not return a valid command.');
   if (intent.kind === 'fallback') return { kind: 'fallback' };
+  if (
+    intent.kind === 'document' &&
+    typeof intent.query === 'string' &&
+    intent.query.trim() &&
+    intent.query.length <= 500 &&
+    !/[\u0000-\u001f]/.test(intent.query)
+  )
+    return { kind: 'document', query: intent.query.trim() };
+  if (
+    intent.kind === 'media' &&
+    ['play', 'pause', 'resume', 'stop', 'next', 'previous'].includes(intent.action) &&
+    ['', 'spotify', 'applemusic'].includes(intent.service || '')
+  )
+    return { kind: 'media', action: intent.action, service: intent.service || '' };
   if (intent.kind === 'music') {
     if (
       !['spotify', 'applemusic'].includes(intent.service) ||

@@ -78,7 +78,12 @@ public static class AppIcon {
       ConvertTo-Json -InputObject $items -Depth 4 -Compress
     }
     'drives' {
-      @(Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -in 2,3 } | ForEach-Object { @{ path = $_.DeviceID + '\'; label = $_.VolumeName; free = $_.FreeSpace; size = $_.Size } }) | ConvertTo-Json -Depth 5 -Compress
+      ConvertTo-Json -InputObject @(Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -in 2,3 } | ForEach-Object { @{ path = $_.DeviceID + '\'; label = $_.VolumeName; volume = $_.VolumeSerialNumber; free = $_.FreeSpace; size = $_.Size } }) -Depth 5 -Compress
+    }
+    { $_ -in 'media','media-status' } {
+      $mediaAction = if ($Action -eq 'media-status') { 'status' } else { [string]$payload.action }
+      & (Join-Path $PSScriptRoot 'media.ps1') -Action $mediaAction -Service ([string]$payload.service) -Title ([string]$payload.title) -Artist ([string]$payload.artist) -WaitMs ([int]$payload.waitMs)
+      if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'Playback control is unavailable.' }
     }
     'brightness' {
       $value = [byte][Math]::Max(0,[Math]::Min(100,[int]$payload.value))

@@ -22,6 +22,10 @@ export type Settings = {
   content: boolean;
   setup: boolean;
   roots: string[];
+  allDrives: boolean;
+  driveRoots: string[];
+  contentRoots: string[];
+  trustedRoots: string[];
   exclusions: string[];
   ai: {
     provider: string;

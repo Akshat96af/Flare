@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Mic, Square, X, ArrowUp, LoaderCircle, RotateCcw, Settings2 } from 'lucide-react';
 import { bridge } from './bridge';
 import type { Settings } from './types';
+import { recordingWav } from './audio';
 
 export default function Voice({
   settings,
@@ -112,6 +113,33 @@ export default function Voice({
         fail((e as Error).message);
       }
     };
+    const local = async () => {
+      if (!active || uploading) return;
+      uploading = true;
+      if (!heard) {
+        fail('No microphone signal detected. Choose your microphone and try again.');
+        return;
+      }
+      setState('transcribing');
+      await stopRecording();
+      try {
+        const bytes = await recordingWav(new Blob(chunks, { type: rec?.mimeType || 'audio/webm' }));
+        if (!active) return;
+        const transcript = await bridge.call('voice-recorded', { bytes });
+        if (!active) return;
+        if (!transcript?.trim())
+          throw new Error(
+            'Windows could not understand this recording. Try Whisper online in Intelligence settings.',
+          );
+        await finish(transcript);
+      } catch (error) {
+        if (!active) return;
+        if (settings.ai.speechCloud) {
+          uploading = false;
+          await cloud();
+        } else fail((error as Error).message);
+      }
+    };
     cancel.current = () => {
       active = false;
       clearTimeout(preparationTimer);
@@ -124,7 +152,7 @@ export default function Voice({
       if (mode === 'preparing' || !ready) return;
       setState('transcribing');
       stopRecording();
-      if (mode === 'local') bridge.call('voice-stop').catch((e) => fail(e.message));
+      if (mode === 'local') local();
       else cloud();
     };
     const listening = () => {
@@ -157,7 +185,7 @@ export default function Voice({
         setEngine(
           mode === 'local'
             ? 'Windows speech'
-            : `${settings.ai.provider === 'gemini' ? 'Gemini' : 'OpenAI'} transcription`,
+            : `${settings.ai.provider === 'gemini' ? 'Gemini' : settings.ai.provider === 'groq' ? 'Whisper' : 'OpenAI'} transcription`,
         );
         if (mode === 'cloud' && !settings.ai.speechCloud) {
           fail('Install English Windows speech, or choose online voice in Intelligence settings.');
@@ -169,7 +197,7 @@ export default function Voice({
             noiseSuppression: true,
             autoGainControl: true,
             channelCount: 1,
-            ...(mode === 'cloud' && device !== 'default' ? { deviceId: { exact: device } } : {}),
+            ...(device !== 'default' ? { deviceId: { exact: device } } : {}),
           },
         });
         if (!active || failed) {
@@ -218,7 +246,7 @@ export default function Voice({
           if (e.data.size) chunks.push(e.data);
         };
         rec.start(250);
-        if (mode === 'cloud') listening();
+        listening();
         const draw = () => {
           if (!active || (stopping && ready)) return;
           analyser.getFloatTimeDomainData(waveform);
@@ -262,32 +290,10 @@ export default function Voice({
           frame = requestAnimationFrame(draw);
         };
         frame = requestAnimationFrame(draw);
-        if (mode === 'local') {
-          const result = bridge.call('voice-start');
-          if (stopping) {
-            setState('transcribing');
-            await stopRecording();
-            bridge.call('voice-stop').catch(() => {});
-          }
-          try {
-            const transcript = await result;
-            if (!transcript?.trim())
-              throw new Error(
-                'Windows speech could not recognize a command. Try online voice in Intelligence settings.',
-              );
-            await finish(transcript);
-          } catch (e) {
-            if (!active || failed) return;
-            if (!settings.ai.speechCloud) {
-              fail((e as Error).message);
-              return;
-            }
-            mode = 'cloud';
-            setEngine(`${settings.ai.provider === 'gemini' ? 'Gemini' : 'OpenAI'} transcription`);
-            if (stopping || heard) await cloud();
-            else listening();
-          }
-        } else if (stopping) await cloud();
+        if (stopping) {
+          if (mode === 'local') await local();
+          else await cloud();
+        }
       } catch (e) {
         const problem = e as Error;
         fail(
@@ -322,6 +328,17 @@ export default function Voice({
         <span className="eyebrow">VOICE</span>
         <button
           className="icon-button"
+          title="Voice settings"
+          aria-label="Voice settings"
+          onClick={() => {
+            cancel.current();
+            onSettings();
+          }}
+        >
+          <Settings2 size={17} />
+        </button>
+        <button
+          className="icon-button"
           title="Cancel voice"
           onClick={() => {
             cancel.current();
@@ -333,7 +350,7 @@ export default function Voice({
       </div>
       <div className="voice-source">
         <span>{engine}</span>
-        {settings.ai.speechCloud && settings.ai.speechMode === 'online' && (
+        {
           <select
             aria-label="Microphone"
             value={device}
@@ -353,7 +370,7 @@ export default function Voice({
               <option value={device}>Selected microphone unavailable</option>
             )}
           </select>
-        )}
+        }
       </div>
       <div className="voice-visual" data-state={state} aria-hidden="true">
         <div className="voice-core">

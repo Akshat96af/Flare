@@ -3,7 +3,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { Worker } = require('node:worker_threads');
 const { powershell, unsafeFile } = require('./native.cjs');
-const { within, excluded } = require('./scope.cjs');
+const { within, excluded, searchRoots, contentAllowed } = require('./scope.cjs');
 const { photoQuery } = require('./photos.cjs');
 
 const websites = [
@@ -75,6 +75,8 @@ class Search {
     this.store.db
       .prepare('INSERT OR REPLACE INTO entries(id,title,path,kind,detail) VALUES(?,?,?,?,?)')
       .run(item.id, item.title, item.path, item.kind, item.detail || '');
+    this.store.db.prepare('DELETE FROM name_fts WHERE id=?').run(item.id);
+    this.store.db.prepare('INSERT INTO name_fts VALUES(?,?,?)').run(item.id, item.title, item.path);
   }
   async apps() {
     const roots = [
@@ -135,6 +137,7 @@ class Search {
       ['Chrome', path.join(process.env.LOCALAPPDATA || '', 'Google/Chrome/User Data')],
       ['Edge', path.join(process.env.LOCALAPPDATA || '', 'Microsoft/Edge/User Data')],
     ]) {
+      if (!contentAllowed(root, this.store.settings())) continue;
       let profiles;
       try {
         profiles = await fs.readdir(root);
@@ -165,9 +168,10 @@ class Search {
   start(force = false) {
     if (this.worker) return;
     const settings = this.store.settings();
-    if (!settings.roots.length) return;
+    const roots = searchRoots(settings);
+    if (!roots.length) return;
     if (!this.watchers.length)
-      for (const root of settings.roots) {
+      for (const root of roots) {
         try {
           const watcher = require('node:fs').watch(root, { recursive: true }, () => {
             clearTimeout(this.changeTimer);
@@ -222,7 +226,7 @@ class Search {
     const settings = this.store.settings();
     if (
       process.platform !== 'win32' ||
-      !settings.roots.length ||
+      !searchRoots(settings).length ||
       Date.now() < this.nativeUnavailable
     )
       return;
@@ -231,11 +235,11 @@ class Search {
     this.nativeCache.set(key, Date.now());
     if (this.nativeCache.size > 50) this.nativeCache.delete(this.nativeCache.keys().next().value);
     try {
-      const items = await powershell('search', { query: q, roots: settings.roots }, 1800);
+      const items = await powershell('search', { query: q, roots: searchRoots(settings) }, 1800);
       for (const item of items) {
         if (
           !item.path ||
-          !settings.roots.some((root) => within(item.path, root)) ||
+          !searchRoots(settings).some((root) => within(item.path, root)) ||
           excluded(item.path, settings.exclusions) ||
           unsafeFile(item.path)
         )
@@ -309,9 +313,36 @@ class Search {
           : kind === 'links'
             ? "WHERE kind IN ('web','bookmark')"
             : 'WHERE kind=?';
-    const candidates = this.store.db
-      .prepare(`SELECT id,title,path,kind,detail,modified,size FROM entries ${condition}`)
-      .iterate(...(['all', 'file', 'links'].includes(kind) ? [] : [kind]));
+    const parameters = ['all', 'file', 'links'].includes(kind) ? [] : [kind];
+    const tokens = q.match(/[\p{L}\p{N}_]+/gu) || [];
+    const escaped = q.toLowerCase().replace(/[\\%_]/g, '\\$&');
+    const predicate = tokens.length
+      ? 'id IN (SELECT id FROM name_fts WHERE name_fts MATCH ? ORDER BY bm25(name_fts,0,4,1) LIMIT 2000)'
+      : "lower(title) LIKE ? ESCAPE '\\'";
+    const matching = tokens.length
+      ? [tokens.map((token) => '"' + token + '"*').join(' AND ')]
+      : ['%' + escaped + '%'];
+    const sql = `SELECT id,title,path,kind,detail,modified,size FROM entries ${condition} ${condition ? 'AND' : 'WHERE'} ${predicate} LIMIT 2000`;
+    let candidates = this.store.db.prepare(sql).all(...parameters, ...matching);
+    if (!candidates.length && tokens.length)
+      candidates = this.store.db
+        .prepare(
+          `SELECT id,title,path,kind,detail,modified,size FROM entries ${condition} ${condition ? 'AND' : 'WHERE'} lower(title) LIKE ? ESCAPE '\\' LIMIT 2000`,
+        )
+        .all(...parameters, '%' + escaped + '%');
+    if (!candidates.length && q.length <= 60) {
+      const fuzzy =
+        '%' +
+        Array.from(q.toLowerCase())
+          .map((letter) => letter.replace(/[\\%_]/g, '\\$&'))
+          .join('%') +
+        '%';
+      candidates = this.store.db
+        .prepare(
+          `SELECT id,title,path,kind,detail,modified,size FROM entries ${condition} ${condition ? 'AND' : 'WHERE'} lower(title) LIKE ? ESCAPE '\\' LIMIT 2000`,
+        )
+        .all(...parameters, fuzzy);
+    }
     let results = [];
     for (const item of candidates) {
       if (
@@ -319,7 +350,13 @@ class Search {
         (letters.length && !letters.includes(item.path.slice(0, 2).toLowerCase()))
       )
         continue;
-      const value = score(item.title, q, usage.get(item.id));
+      let value = score(item.title, q, usage.get(item.id));
+      if (
+        !value &&
+        ['file', 'folder'].includes(item.kind) &&
+        words.every((word) => item.path.toLowerCase().includes(word))
+      )
+        value = 400;
       if (value <= 0) continue;
       results.push({ ...item, score: value });
       if (results.length > 60)
@@ -338,7 +375,12 @@ class Search {
           const item = this.store.db
             .prepare('SELECT id,title,path,kind,detail,modified,size FROM entries WHERE id=?')
             .get(row.id);
-          if (item && this.allowed(item, settings) && !results.some((x) => x.id === item.id))
+          if (
+            item &&
+            this.allowed(item, settings) &&
+            contentAllowed(item.path, settings) &&
+            !results.some((x) => x.id === item.id)
+          )
             results.push({ ...item, detail: row.snippet, score: 500, contentMatch: true });
         }
       } catch {
@@ -356,7 +398,7 @@ class Search {
     if (!['file', 'folder'].includes(item.kind))
       return item.kind !== 'clipboard' || settings.clipboard;
     return (
-      settings.roots.some((root) => within(item.path, root)) &&
+      searchRoots(settings).some((root) => within(item.path, root)) &&
       !excluded(item.path, settings.exclusions)
     );
   }
@@ -413,7 +455,9 @@ class Search {
   }
   get(id) {
     const item = this.store.db.prepare('SELECT * FROM entries WHERE id=?').get(id);
-    return item && this.allowed(item) ? item : null;
+    if (!item || !this.allowed(item)) return null;
+    if (!contentAllowed(item.path, this.store.settings())) item.content = '';
+    return item;
   }
 }
 function commonRoots() {

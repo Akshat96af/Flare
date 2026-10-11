@@ -1,5 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
+const { purgeContent } = require('./scope.cjs');
 const { DatabaseSync } = require('node:sqlite');
 
 const defaults = {
@@ -14,6 +16,11 @@ const defaults = {
   content: true,
   setup: false,
   roots: [],
+  allDrives: true,
+  driveRoots: [],
+  driveVolumes: {},
+  contentRoots: [],
+  trustedRoots: [],
   exclusions: [
     'node_modules',
     '.git',
@@ -41,7 +48,7 @@ const defaults = {
   confirmConversions: true,
 };
 
-function createStore(directory) {
+function createStore(directory, { machine = os.hostname() + '|' + os.homedir() } = {}) {
   fs.mkdirSync(directory, { recursive: true });
   const db = new DatabaseSync(path.join(directory, 'flare.sqlite'));
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -49,6 +56,7 @@ function createStore(directory) {
     CREATE TABLE IF NOT EXISTS entries(id TEXT PRIMARY KEY,title TEXT NOT NULL,path TEXT NOT NULL,kind TEXT NOT NULL,detail TEXT,modified REAL,size REAL,content TEXT DEFAULT '');
     CREATE INDEX IF NOT EXISTS entries_kind ON entries(kind);
     CREATE VIRTUAL TABLE IF NOT EXISTS content_fts USING fts5(id UNINDEXED,title,content);
+    CREATE VIRTUAL TABLE IF NOT EXISTS name_fts USING fts5(id UNINDEXED,title,path);
     CREATE TABLE IF NOT EXISTS usage(id TEXT PRIMARY KEY,count INTEGER DEFAULT 0,last REAL);
     CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,taken REAL,width INTEGER,height INTEGER);
@@ -59,6 +67,26 @@ function createStore(directory) {
   };
   const set = (key, value) =>
     db.prepare('INSERT OR REPLACE INTO preferences VALUES(?,?)').run(key, JSON.stringify(value));
+  if (get('permission-machine', '') !== machine) {
+    const saved = get('settings', {});
+    set('settings', {
+      ...saved,
+      contentRoots: [],
+      trustedRoots: [],
+      driveRoots: [],
+      driveVolumes: {},
+    });
+    db.exec(
+      "DELETE FROM content_fts; DELETE FROM photos; DELETE FROM name_fts; DELETE FROM entries WHERE kind IN ('file','folder')",
+    );
+    set('permission-machine', machine);
+  }
+  if (get('name-index-version', 0) !== 1) {
+    db.exec(
+      'DELETE FROM name_fts; INSERT INTO name_fts(id,title,path) SELECT id,title,path FROM entries',
+    );
+    set('name-index-version', 1);
+  }
   return {
     db,
     directory,
@@ -69,7 +97,22 @@ function createStore(directory) {
       ...get('settings', {}),
       ai: { ...defaults.ai, ...get('settings', {}).ai },
     }),
-    saveSettings: (value) => set('settings', value),
+    saveSettings: (value) => {
+      const previous = get('settings', {});
+      set('settings', value);
+      if (
+        [
+          'content',
+          'roots',
+          'exclusions',
+          'allDrives',
+          'driveRoots',
+          'contentRoots',
+          'trustedRoots',
+        ].some((key) => JSON.stringify(previous[key]) !== JSON.stringify(value[key]))
+      )
+        purgeContent(db, { ...defaults, ...value });
+    },
     putOperation: (value) =>
       db
         .prepare('INSERT OR REPLACE INTO operations VALUES(?,?)')

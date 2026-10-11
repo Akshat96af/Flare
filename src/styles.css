@@ -1325,6 +1325,34 @@ select {
     transform: scaleY(0.3) !important;
   }
 }
+.file-access {
+  padding: 24px 12px;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+.file-access p {
+  margin: 0;
+}
+.file-access .button-row {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.permission-location select {
+  width: 160px;
+  max-width: 46%;
+  flex: 0 0 auto;
+}
+@media (max-width: 480px) {
+  .permission-location {
+    flex-wrap: wrap;
+  }
+  .permission-location select {
+    margin-left: 24px;
+    max-width: 100%;
+  }
+}
 @media (forced-colors: active) {
   .launcher {
     background: Canvas;

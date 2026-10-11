@@ -38,6 +38,8 @@ Examples: `open YouTube`, `volume max`, `brightness 50 percent`, `12 * (3 + 4)`,
 
 ## Intelligence
 
+See [voice recording and Whisper setup](docs/VOICE_WHISPER.md) for the repaired microphone pipeline and Groq transcription option. AI answers now reveal progressively, with reduced-motion support.
+
 Connect Gemini, OpenRouter (free models), OpenAI, Anthropic, or local Ollama in Settings. API keys use Windows-backed Electron safeStorage and are never returned to the UI. Online interpretation shares command text, not indexed document contents. File tools still use locally selected files/folders.
 
 When no local result matches, enabled Intelligence offers **Ask AI**. Answers are plain text; AI cannot see your indexed files or invent file changes. Checking a connection only validates model discovery, not generation quota or availability. Ordinary failed AI requests fall back to Google; the explicit Test response action keeps provider errors visible in Intelligence settings. Normal text requests retry HTTP 503 up to twice with bounded backoff; each attempt may count toward provider usage. Connection tests and speech uploads are not automatically retried. Cancellation stops pending retries.

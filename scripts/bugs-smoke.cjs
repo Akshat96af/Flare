@@ -152,7 +152,7 @@ const { expect } = require('@playwright/test');
         opened: [],
         status: 200,
         delay: 0,
-        answer: 'A concise fixture answer.',
+        answer: 'A concise fixture answer. '.repeat(12).trim(),
       };
       shell.openExternal = async (url) => {
         global.flareTest.opened.push(url);
@@ -279,10 +279,16 @@ const { expect } = require('@playwright/test');
     await page.getByTitle('Close settings', { exact: true }).click();
     await page.locator('.ask-ai').click();
     await page.getByRole('region', { name: 'AI answer' }).waitFor();
-    assert.equal(await page.locator('.ai-answer p').textContent(), 'A concise fixture answer.');
+    await expect(page.locator('.typing-caret')).toBeVisible();
+    const answer = 'A concise fixture answer. '.repeat(12).trim();
+    assert.ok((await page.locator('.typed-answer').innerText()).length < answer.length);
+    await expect(page.locator('.ai-answer p')).toHaveText(answer);
+    await expect(page.locator('.typing-caret')).toHaveCount(0);
     await audit('AI answer dark');
     await page.screenshot({ path: path.join(directory, '02-ai-answer.png') });
-    checks.push('Empty local search -> explicit Ask AI -> safe plain-text answer');
+    checks.push(
+      'Explicit Ask AI reveals a safe plain-text answer progressively and removes the caret',
+    );
     assert.equal(
       await instance.evaluate(
         () => global.flareTest.requests.filter((x) => x.method === 'POST').length,

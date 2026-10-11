@@ -15,6 +15,29 @@ async function withFetch(mock, run) {
 const response = (data) =>
   new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } });
 
+test('Groq separates Whisper from chat models and preserves namespaced model IDs', async () => {
+  await withFetch(
+    async (url, options) => {
+      assert.equal(url, 'https://api.groq.com/openai/v1/models');
+      assert.equal(options.headers.Authorization, 'Bearer fixture-key');
+      return response({
+        data: [
+          { id: 'openai/gpt-oss-20b' },
+          { id: 'whisper-large-v3-turbo' },
+          { id: 'whisper-large-v3' },
+          { id: 'meta-llama/llama-guard-4-12b' },
+        ],
+      });
+    },
+    async () => {
+      const data = await ai.catalogue('groq', 'fixture-key');
+      assert.deepEqual(data.models, ['openai/gpt-oss-20b']);
+      assert.ok(data.speechModels.includes('whisper-large-v3-turbo'));
+      assert.equal(ai.normalizeModel('groq', 'openai/gpt-oss-20b'), 'openai/gpt-oss-20b');
+    },
+  );
+});
+
 test('Gemini canonicalizes model resources and sends POST with room for reasoning', async () => {
   await withFetch(
     async (url, options) => {

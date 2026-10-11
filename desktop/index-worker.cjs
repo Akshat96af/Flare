@@ -4,7 +4,7 @@ const path = require('node:path');
 const { createStore } = require('./store.cjs');
 const { extract } = require('./extract.cjs');
 const { unsafeFile, fileAttributes } = require('./native.cjs');
-const { excluded } = require('./scope.cjs');
+const { excluded, searchRoots, contentAllowed } = require('./scope.cjs');
 const { photoMetadata } = require('./photos.cjs');
 const { imageExtensions } = require('./search.cjs');
 const store = createStore(workerData.directory),
@@ -15,11 +15,6 @@ let count = 0,
   lastEmit = 0;
 async function walk(dir) {
   if (unsafeFile(dir) || excluded(dir, settings.exclusions)) return;
-  const folderId = 'folder:' + dir;
-  seen.add(folderId);
-  store.db
-    .prepare('INSERT OR REPLACE INTO entries(id,title,path,kind,detail) VALUES(?,?,?,?,?)')
-    .run(folderId, path.basename(dir) || dir, dir, 'folder', path.dirname(dir));
   let entries;
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
@@ -27,6 +22,15 @@ async function walk(dir) {
     failures++;
     return;
   }
+  const folderId = 'folder:' + dir;
+  seen.add(folderId);
+  store.db
+    .prepare('INSERT OR REPLACE INTO entries(id,title,path,kind,detail) VALUES(?,?,?,?,?)')
+    .run(folderId, path.basename(dir) || dir, dir, 'folder', path.dirname(dir));
+  store.db.prepare('DELETE FROM name_fts WHERE id=?').run(folderId);
+  store.db
+    .prepare('INSERT INTO name_fts VALUES(?,?,?)')
+    .run(folderId, path.basename(dir) || dir, dir);
   for (const entry of entries) {
     if (
       entry.isSymbolicLink() ||
@@ -50,29 +54,37 @@ async function walk(dir) {
     if (!entry.isFile()) continue;
     const id = 'file:' + file;
     seen.add(id);
-    const previous = store.db.prepare('SELECT modified,size FROM entries WHERE id=?').get(id);
+    const previous = store.db
+      .prepare('SELECT modified,size,content FROM entries WHERE id=?')
+      .get(id);
+    const readContents = settings.content && contentAllowed(file, settings);
     if (
       workerData.force ||
       !previous ||
       previous.modified !== stat.mtimeMs ||
-      previous.size !== stat.size
+      previous.size !== stat.size ||
+      (!readContents && previous.content)
     ) {
       let content = '';
       try {
         content =
-          settings.content && !(fileAttributes(file) & 0x2000)
-            ? await extract(file, stat.size)
-            : '';
+          readContents && !(fileAttributes(file) & 0x2000) ? await extract(file, stat.size) : '';
       } catch {
         failures++;
       }
       store.db
         .prepare('INSERT OR REPLACE INTO entries VALUES(?,?,?,?,?,?,?,?)')
         .run(id, entry.name, file, 'file', path.dirname(file), stat.mtimeMs, stat.size, content);
+      store.db.prepare('DELETE FROM name_fts WHERE id=?').run(id);
+      store.db.prepare('INSERT INTO name_fts VALUES(?,?,?)').run(id, entry.name, file);
       store.db.prepare('DELETE FROM content_fts WHERE id=?').run(id);
       if (content)
         store.db.prepare('INSERT INTO content_fts VALUES(?,?,?)').run(id, entry.name, content);
-      if (imageExtensions.has(path.extname(file).toLowerCase()) && stat.size < 100 * 1024 * 1024) {
+      if (
+        readContents &&
+        imageExtensions.has(path.extname(file).toLowerCase()) &&
+        stat.size < 100 * 1024 * 1024
+      ) {
         try {
           const meta = await photoMetadata(file);
           store.db
@@ -91,13 +103,23 @@ async function walk(dir) {
   }
 }
 (async () => {
-  for (const root of settings.roots) await walk(root);
+  const roots = searchRoots(settings).filter(
+    (root, i, all) =>
+      !all.some(
+        (other, j) =>
+          j !== i &&
+          require('./scope.cjs').within(root, other) &&
+          (!require('./scope.cjs').within(other, root) || j < i),
+      ),
+  );
+  for (const root of roots) await walk(root);
   // Sweep only entries in the current scope; disconnected drives retain no live results.
   const old = store.db.prepare("SELECT id FROM entries WHERE kind IN ('file','folder')").all();
   store.db.exec('BEGIN');
   for (const row of old)
     if (!seen.has(row.id)) {
       store.db.prepare('DELETE FROM entries WHERE id=?').run(row.id);
+      store.db.prepare('DELETE FROM name_fts WHERE id=?').run(row.id);
       store.db.prepare('DELETE FROM content_fts WHERE id=?').run(row.id);
       store.db.prepare('DELETE FROM photos WHERE id=?').run(row.id);
     }

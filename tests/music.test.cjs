@@ -176,3 +176,25 @@ test('track opening prefers the app and otherwise opens only its exact web track
   );
   assert.deepEqual(opened, ['https://open.spotify.com/']);
 });
+
+test('track playback is requested only after opening its exact native link', async () => {
+  for (const available of [true, false]) {
+    const calls = [];
+    const result = await openTrack(
+      { service: 'spotify', web: spotify, title: 'Song', artist: 'Artist' },
+      {
+        hasProtocol: async () => available,
+        openExternal: async (url) => calls.push(url),
+        requestPlayback: async (track) => {
+          calls.push(track.title);
+          return { ok: true };
+        },
+      },
+    );
+    assert.deepEqual(
+      calls,
+      available ? ['spotify:track:0123456789ABCDEFGHIJKL', 'Song'] : [spotify],
+    );
+    assert.equal(!!result.playbackRequested, available);
+  }
+});

@@ -169,11 +169,23 @@ async function resolveMusic(intent, signal) {
   signal?.throwIfAborted();
   return { ...target, title: song.trackName, artist: song.artistName, service: intent.service };
 }
-async function openTrack(track, { hasProtocol, openExternal }) {
+async function openTrack(track, { hasProtocol, openExternal, requestPlayback }) {
   const target = trackTarget(track.service, track.web);
   try {
     if (await hasProtocol(target.native)) {
       await openExternal(target.native);
+      if (requestPlayback) {
+        try {
+          const playback = await requestPlayback(track);
+          if (playback.ok)
+            return {
+              message: `Playback requested for ${track.title} by ${track.artist}`,
+              playbackRequested: true,
+            };
+        } catch {
+          /* Navigation succeeded; unavailable playback control must not open a second player. */
+        }
+      }
       return { message: `Opened ${track.title} by ${track.artist} in the app` };
     }
   } catch {

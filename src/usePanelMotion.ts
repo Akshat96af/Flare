@@ -4,6 +4,14 @@ export const cinematicEase = 'cubic-bezier(.16, 1, .24, 1)';
 
 export function usePanelMotion(root: RefObject<HTMLElement | null>, view: string) {
   const previous = useRef(view);
+  const skipUntil = useRef(0);
+  useLayoutEffect(() => {
+    const skip = () => {
+      skipUntil.current = performance.now() + 500;
+    };
+    window.addEventListener('flare:activate', skip);
+    return () => window.removeEventListener('flare:activate', skip);
+  }, []);
   useLayoutEffect(() => {
     const element = root.current;
     const changed = previous.current !== view;
@@ -18,6 +26,7 @@ export function usePanelMotion(root: RefObject<HTMLElement | null>, view: string
         ':scope > .settings-panel, :scope > .tools-panel, :scope > .voice-panel, :scope > .share-panel, :scope > .history-panel, :scope > .plan-panel, :scope > .search-content, :scope > .settings-content',
       ) || (element.matches('.tools-panel') ? element : null);
     if (!surface) return;
+    if (performance.now() < skipUntil.current) return;
     surface.dataset.paneMotion = 'true';
     const animations: Animation[] = [];
     const play = (node: HTMLElement, frames: Keyframe[], duration: number, delay = 0) => {
@@ -116,39 +125,38 @@ export function useLauncherMotion(root: RefObject<HTMLElement | null>) {
     const stop = () => {
       animations.forEach((animation) => animation.cancel());
       animations = [];
+      element.dataset.launchMotion = 'idle';
     };
     const enter = () => {
       stop();
       if (motion.matches) return;
+      element
+        .getAnimations({ subtree: true })
+        .filter((animation) => animation.id === 'flare-panel')
+        .forEach((animation) => animation.cancel());
+      element.dataset.launchMotion = 'opening';
       const animation = element.animate(
         [
-          { opacity: 0, transform: 'translate3d(0, -10px, 0) scale(.985)' },
-          { opacity: 1, offset: 0.32 },
-          { opacity: 1, transform: 'translate3d(0, 0, 0) scale(1)' },
+          { opacity: 0, transform: 'translate3d(0, -6px, 0)' },
+          { opacity: 1, transform: 'translate3d(0, 0, 0)' },
         ],
-        { duration: 420, easing: cinematicEase },
+        { duration: 300, easing: cinematicEase },
       );
       animation.id = 'flare-launch';
       animations.push(animation);
-      const rail = element.querySelector('.search-bar');
-      if (rail)
-        animations.push(
-          rail.animate(
-            [
-              { opacity: 0.4, transform: 'translate3d(0, 4px, 0)' },
-              { opacity: 1, transform: 'translate3d(0, 0, 0)' },
-            ],
-            { duration: 300, delay: 30, easing: cinematicEase, fill: 'backwards' },
-          ),
-        );
+      animation.finished
+        .then(() => {
+          if (animations.includes(animation)) element.dataset.launchMotion = 'idle';
+        })
+        .catch(() => {});
     };
     const settlePicker = (event: Event) => {
       if (event.target instanceof Element && event.target.closest('select')) stop();
     };
-    enter();
+    if (!window.flare) enter();
     element.addEventListener('pointerdown', settlePicker, true);
     element.addEventListener('focusin', settlePicker);
-    window.addEventListener('flare:activate', enter);
+    window.addEventListener('flare:shown', enter);
     window.addEventListener('flare:dismiss', stop);
     window.addEventListener('blur', stop);
     motion.addEventListener('change', stop);
@@ -156,7 +164,7 @@ export function useLauncherMotion(root: RefObject<HTMLElement | null>) {
       stop();
       element.removeEventListener('pointerdown', settlePicker, true);
       element.removeEventListener('focusin', settlePicker);
-      window.removeEventListener('flare:activate', enter);
+      window.removeEventListener('flare:shown', enter);
       window.removeEventListener('flare:dismiss', stop);
       window.removeEventListener('blur', stop);
       motion.removeEventListener('change', stop);

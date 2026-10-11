@@ -9,6 +9,20 @@
   --glass-warm-edge: rgba(236, 207, 184, 0.4);
   --motion-out: cubic-bezier(0.16, 1, 0.24, 1);
 }
+.typing-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 3px;
+  vertical-align: -0.12em;
+  background: var(--accent);
+  animation: typingPulse 900ms ease-in-out infinite;
+}
+@keyframes typingPulse {
+  50% {
+    opacity: 0.25;
+  }
+}
 :root[data-theme='light'] {
   --glass-fill: #f3f5f6;
   --glass-rail: rgba(240, 246, 249, 0.92);

@@ -11,6 +11,10 @@ const defaultSettings: Settings = {
   content: true,
   setup: false,
   roots: [],
+  allDrives: true,
+  driveRoots: [],
+  contentRoots: [],
+  trustedRoots: [],
   exclusions: [],
   ai: { provider: 'off', model: '', speechCloud: false },
   recoveryDays: 0,
@@ -37,7 +41,15 @@ const transport: Bridge = window.flare || {
     if (method === 'search') return [];
     if (['history', 'drives', 'models'].includes(method)) return [];
     if (
-      ['resize', 'hide', 'ai-cancel', 'voice-cancel', 'cancel', 'clipboard-clear'].includes(method)
+      [
+        'resize',
+        'launcher-ready',
+        'hide',
+        'ai-cancel',
+        'voice-cancel',
+        'cancel',
+        'clipboard-clear',
+      ].includes(method)
     )
       return true;
     throw new Error('This action needs the Flare desktop app.');

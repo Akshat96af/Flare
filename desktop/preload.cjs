@@ -5,6 +5,10 @@ const allowed = new Set([
   'search',
   'open',
   'preview',
+  'file-permission',
+  'folder-permission',
+  'document-summary',
+  'document-find',
   'result-action',
   'share-pick',
   'share-start',
@@ -30,11 +34,14 @@ const allowed = new Set([
   'cancel',
   'hide',
   'resize',
+  'launcher-ready',
   'voice-status',
   'voice-start',
   'voice-stop',
   'voice-cancel',
   'voice-transcribe',
+  'voice-recorded',
+  'voice-submit',
   'local-info',
   'local-install',
   'local-pull',
@@ -50,6 +57,7 @@ contextBridge.exposeInMainWorld('flare', {
     if (
       ![
         'activation',
+        'shown',
         'dismiss',
         'hold',
         'voice',
@@ -59,6 +67,7 @@ contextBridge.exposeInMainWorld('flare', {
         'theme',
         'model-download',
         'share',
+        'settings',
       ].includes(event)
     )
       throw new Error('Unsupported event.');
