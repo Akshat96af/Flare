@@ -1,24 +1,26 @@
 # Capabilities
 
-| Area | Implemented | Limits |
-| --- | --- | --- |
-| Launcher | Global shortcut/hold detection, tray, single instance, light/dark/system | Physical release ordering and mixed-DPI need manual checks |
-| Apps | Start Menu shortcuts, Windows Store IDs and Shell icons | Generic icon fallback if Windows cannot resolve an icon |
-| Files/folders | Selected locations, SQLite, exact/fuzzy ranking, usage learning | No elevation; network shares not validated |
-| Windows Search | Scoped filename fallback | Depends on Windows service and existing coverage |
-| Changes | Watcher-triggered scans reuse unchanged extraction; 10-minute fallback | Not a USN-journal index; metadata is rescanned |
-| Content | Text/code/Markdown, PDF text, DOCX/XLSX/PPTX; opt-in local image/scanned-PDF OCR | Content-allowed folders only; 12 MB input, 160,000 characters; OCR first 10 PDF pages |
-| File actions | Format-aware selected-file actions; prefilled conversion, resizing, summaries, OCR, sharing | Declined OCR component is hidden; originals and Undo remain protected |
-| Photos | Month/year and ISO dates; EXIF preferred | Labeled modified-date fallback; UTC calendar date fields |
-| Bookmarks | Read-only Chrome/Edge Default/Profile N | No Firefox, browser sync, or live watcher |
-| Clipboard | Opt-in, 50 text items/7 days, clear/disable | Database not encrypted; no perfect secret detection |
-| Voice | Windows speech, optional offline Whisper, opt-in provider transcription, recording replay and meter | English; offline models selected during Setup; actual microphone accuracy varies |
-| AI | BYOK discovery, validated commands/answers, Ask AI, Ollama, consent-gated document summaries | No unrestricted indexed-file access, embeddings or arbitrary automation; discovery does not guarantee generation access |
-| Local setup | Official installer link, model detection, approved download with progress/cancel | Installation user-managed; canceled chunks may remain |
-| System | Default output volume and laptop brightness | No DDC/CI external-monitor control |
-| Organization | Chosen folder's immediate regular files by type/month | 500 candidates; no recursive AI renames |
-| Cleanup | Selected files modified over 90 days ago moved to recovery | Age is not proof of disuse; no permanent purge |
-| Undo | Durable per-item journal and hashes, global/history restore | Not atomic; missing files/later edits create conflicts; no auto-expiry |
+Clipboard screenshots are captured automatically only with Clipboard history enabled. Image bytes remain in bounded session memory, not the SQLite index or disk. The Clipboard tab offers preview, copy-back and local OCR. Extracted text can be summarized, cleaned up or inspected for action items using an explicitly approved AI text request; image pixels are never sent by these actions.
+
+| Area           | Implemented                                                                                         | Limits                                                                                                                  |
+| -------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Launcher       | Global shortcut/hold detection, tray, single instance, light/dark/system                            | Physical release ordering and mixed-DPI need manual checks                                                              |
+| Apps           | Start Menu shortcuts, Windows Store IDs and Shell icons                                             | Generic icon fallback if Windows cannot resolve an icon                                                                 |
+| Files/folders  | Selected locations, SQLite, exact/fuzzy ranking, usage learning                                     | No elevation; network shares not validated                                                                              |
+| Windows Search | Scoped filename fallback                                                                            | Depends on Windows service and existing coverage                                                                        |
+| Changes        | Watcher-triggered scans reuse unchanged extraction; 10-minute fallback                              | Not a USN-journal index; metadata is rescanned                                                                          |
+| Content        | Text/code/Markdown, PDF text, DOCX/XLSX/PPTX; opt-in local image/scanned-PDF OCR                    | Content-allowed folders only; 12 MB input, 160,000 characters; OCR first 10 PDF pages                                   |
+| File actions   | Format-aware selected-file actions; prefilled conversion, resizing, summaries, OCR, sharing         | Declined OCR component is hidden; originals and Undo remain protected                                                   |
+| Photos         | Month/year and ISO dates; EXIF preferred                                                            | Labeled modified-date fallback; UTC calendar date fields                                                                |
+| Bookmarks      | Read-only Chrome/Edge Default/Profile N                                                             | No Firefox, browser sync, or live watcher                                                                               |
+| Clipboard      | Opt-in, 50 text items/7 days, clear/disable                                                         | Database not encrypted; no perfect secret detection                                                                     |
+| Voice          | Windows speech, optional offline Whisper, opt-in provider transcription, recording replay and meter | English; offline models selected during Setup; actual microphone accuracy varies                                        |
+| AI             | BYOK discovery, validated commands/answers, Ask AI, Ollama, consent-gated document summaries        | No unrestricted indexed-file access, embeddings or arbitrary automation; discovery does not guarantee generation access |
+| Local setup    | Official installer link, model detection, approved download with progress/cancel                    | Installation user-managed; canceled chunks may remain                                                                   |
+| System         | Default output volume and laptop brightness                                                         | No DDC/CI external-monitor control                                                                                      |
+| Organization   | Chosen folder's immediate regular files by type/month                                               | 500 candidates; no recursive AI renames                                                                                 |
+| Cleanup        | Selected files modified over 90 days ago moved to recovery                                          | Age is not proof of disuse; no permanent purge                                                                          |
+| Undo           | Durable per-item journal and hashes, global/history restore                                         | Not atomic; missing files/later edits create conflicts; no auto-expiry                                                  |
 
 ## Conversion
 

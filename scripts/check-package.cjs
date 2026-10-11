@@ -19,6 +19,8 @@ const files = [
   'desktop/ocr-worker.cjs',
   'desktop/file-actions.cjs',
   'desktop/offline-whisper.cjs',
+  'desktop/clipboard-history.cjs',
+  'desktop/text-intelligence.cjs',
   'desktop/music.cjs',
   'desktop/media.ps1',
   'desktop/windows.ps1',

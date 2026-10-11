@@ -44,17 +44,27 @@ const AxeBuilder = require('@axe-core/playwright').default;
         timeout: 60000,
       })
       .toBe(true);
-    await instance.evaluate(({ dialog }, locations) => {
-      global.localFeatures = { consent: 0, decision: 0, picks: [locations.folder, locations.output] };
-      dialog.showMessageBox = async () => {
-        global.localFeatures.consent++;
-        return { response: global.localFeatures.decision };
-      };
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [global.localFeatures.picks.shift() || locations.output] });
-      global.fetch = async () => {
-        throw new Error('Local features must not use the network');
-      };
-    }, { folder, output });
+    await instance.evaluate(
+      ({ dialog }, locations) => {
+        global.localFeatures = {
+          consent: 0,
+          decision: 0,
+          picks: [locations.folder, locations.output],
+        };
+        dialog.showMessageBox = async () => {
+          global.localFeatures.consent++;
+          return { response: global.localFeatures.decision };
+        };
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [global.localFeatures.picks.shift() || locations.output],
+        });
+        global.fetch = async () => {
+          throw new Error('Local features must not use the network');
+        };
+      },
+      { folder, output },
+    );
     await page.evaluate(() => window.flare.call('pick', { kind: 'folder' }));
     await page.evaluate(
       (folder) =>
@@ -117,14 +127,17 @@ const AxeBuilder = require('@axe-core/playwright').default;
       .poll(async () => (await fs.readdir(output)).some((name) => name.endsWith('.webp')))
       .toBe(true);
     const produced = (await fs.readdir(output)).find((name) => name.endsWith('.webp'));
-    assert.equal((await require('sharp')(path.join(output, produced)).metadata()).width, 500);
+    assert.equal(
+      (await require('sharp')(await fs.readFile(path.join(output, produced))).metadata()).width,
+      500,
+    );
     await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect.poll(async () => await fs.readdir(output)).toEqual([]);
     checks.push(
       'Format-aware file actions, permission-denied OCR, real pixel recognition, prefilled resize, reviewed conversion and undo',
     );
-    await page.getByRole('button', { name: 'Close activity' }).click();
+    await page.getByRole('button', { name: 'Close history' }).click();
     await input.fill('scan');
     await page.getByRole('button', { name: 'File actions for scan.pdf', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Extract pages', exact: true })).toBeVisible();
@@ -158,6 +171,88 @@ const AxeBuilder = require('@axe-core/playwright').default;
       [],
     );
     await page.getByTitle('Close settings', { exact: true }).click();
+    assert.equal(
+      await page.evaluate(async () => (await window.flare.call('ocr-info')).available),
+      true,
+    );
+    await instance.evaluate(
+      ({ clipboard, nativeImage }, bytes) => {
+        const screenshot = nativeImage.createFromBuffer(Buffer.from(bytes));
+        clipboard.readImage = () => screenshot;
+        clipboard.readText = () => '';
+        clipboard.has = () => false;
+        global.localFeatures.copiedImage = 0;
+        clipboard.writeImage = () => {
+          global.localFeatures.copiedImage++;
+        };
+        global.localFeatures.requests = [];
+        global.fetch = async (_url, options) => {
+          global.localFeatures.requests.push(JSON.parse(options.body));
+          return new Response(
+            JSON.stringify({
+              choices: [{ message: { content: '{"kind":"answer","text":"FLARE INVOICE 82741"}' } }],
+            }),
+          );
+        };
+      },
+      Array.from(await fs.readFile(image)),
+    );
+    await page.evaluate(() => window.flare.call('settings', { clipboard: true }));
+    await input.fill('');
+    await page.getByRole('button', { name: 'Clipboard history', exact: true }).click();
+    await expect(page.getByRole('option', { name: /Screenshot/ })).toBeVisible({ timeout: 10000 });
+    await page.getByRole('button', { name: 'Preview screenshot', exact: true }).click();
+    await expect(page.locator('.file-preview')).toBeVisible();
+    await page.getByTitle('Close preview', { exact: true }).click();
+    await page.evaluate(() =>
+      window.flare.call('ai-save', {
+        provider: 'openai',
+        model: 'fixture-model',
+        key: 'fixture-key',
+      }),
+    );
+    await page.getByRole('button', { name: 'Read screenshot text', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Recognized text' })).toHaveValue(/82741/, {
+      timeout: 60000,
+    });
+    await page.getByLabel('AI text action', { exact: true }).selectOption('cleanup');
+    await instance.evaluate(() => {
+      global.localFeatures.decision = 0;
+    });
+    await page.getByRole('button', { name: 'Process with AI', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('cancelled');
+    assert.equal(await instance.evaluate(() => global.localFeatures.requests.length), 0);
+    await instance.evaluate(() => {
+      global.localFeatures.decision = 1;
+    });
+    await page.getByRole('button', { name: 'Process with AI', exact: true }).click();
+    await expect(page.locator('.typed-answer')).toHaveAttribute(
+      'aria-label',
+      'FLARE INVOICE 82741',
+    );
+    const requests = await instance.evaluate(() => global.localFeatures.requests);
+    assert.equal(requests.length, 1);
+    assert.match(requests[0].messages[1].content, /82741/);
+    assert.equal(JSON.stringify(requests).includes('data:image'), false);
+    await page.screenshot({ path: path.join(directory, 'clipboard-ocr-ai.png') });
+    const textAudit = await new AxeBuilder({ page })
+      .setLegacyMode(true)
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+      .analyze();
+    assert.deepEqual(
+      textAudit.violations.map((item) => item.id),
+      [],
+    );
+    await page.getByRole('button', { name: 'Close text recognition' }).click();
+    await page.getByRole('option', { name: /Screenshot/ }).click();
+    assert.equal(await instance.evaluate(() => global.localFeatures.copiedImage), 1);
+    await page.evaluate(() => window.flare.call('clipboard-clear'));
+    await expect(page.getByRole('option', { name: /Screenshot/ })).toHaveCount(0);
+    await page.evaluate(() => window.flare.call('settings', { clipboard: false }));
+    await page.getByRole('tab', { name: 'All', exact: true }).click();
+    checks.push(
+      'Automatic clipboard screenshots, in-memory previews, real local OCR, explicit AI consent, text-only bounded requests, copy-back and clearing',
+    );
     await instance.evaluate(({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0];
       win.setResizable(true);

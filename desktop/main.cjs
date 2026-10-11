@@ -22,7 +22,13 @@ const { createStore } = require('./store.cjs');
 const { Search, commonRoots } = require('./search.cjs');
 const { Operations } = require('./operations.cjs');
 const { interpretLocal } = require('./commands.cjs');
-const { chordHeld, foregroundBounds, powershell, scriptPath } = require('./native.cjs');
+const {
+  chordHeld,
+  foregroundBounds,
+  powershell,
+  scriptPath,
+  clipboardSequence,
+} = require('./native.cjs');
 const ai = require('./ai.cjs');
 const { createHold } = require('./shortcut.cjs');
 const { QuickShare } = require('./share.cjs');
@@ -31,6 +37,7 @@ const { resolveMusic, openTrack } = require('./music.cjs');
 const { randomUUID } = require('node:crypto');
 const { FilePermissions } = require('./permissions.cjs');
 const { OfflineWhisper } = require('./offline-whisper.cjs');
+const { ClipboardHistory } = require('./clipboard-history.cjs');
 const { searchRoots, within, excluded } = require('./scope.cjs');
 const tracks = new Map();
 const external = {
@@ -73,6 +80,8 @@ let win,
   offlineVoice,
   fileRequest,
   ocrWorker,
+  clipboardHistory,
+  lastOcr,
   driveTimer,
   openingTimer,
   activationId = 0,
@@ -165,6 +174,7 @@ function hideLauncher() {
   stopVoice(true);
   aiRequest?.abort();
   fileRequest?.abort();
+  lastOcr = null;
   send('dismiss', {});
   win.hide();
 }
@@ -284,6 +294,19 @@ async function pick(kind) {
   return files;
 }
 async function preview(id) {
+  const entry = search.get(id);
+  if (entry?.kind === 'clipboard' && clipboardHistory.images.has(id)) {
+    const image = clipboardHistory.image(id);
+    return {
+      id,
+      name: image.title,
+      type: 'PNG',
+      size: image.bytes.length,
+      contentAllowed: true,
+      image: 'data:image/png;base64,' + image.bytes.toString('base64'),
+      clipboardImage: true,
+    };
+  }
   const file = await approvedFile(id);
   const { stat } = await permissions.validate(file);
   if (!stat.isFile() || stat.size > 100 * 1024 * 1024)
@@ -325,18 +348,26 @@ async function preview(id) {
   return result;
 }
 async function readFileText(id) {
-  const file = await approvedFile(id);
+  const entry = search.get(id);
+  const screenshot =
+    entry?.kind === 'clipboard' && clipboardHistory.images.has(id)
+      ? clipboardHistory.image(id)
+      : null;
+  const file = screenshot ? null : await approvedFile(id);
+  lastOcr = null;
   fileRequest?.abort();
   const controller = new AbortController();
   fileRequest = controller;
   const generation = permissions.generation;
   try {
-    const checked = await permissions.request(file);
+    const checked = screenshot ? null : await permissions.request(file);
     controller.signal.throwIfAborted();
     if (generation !== permissions.generation) throw new Error('File access changed. Try again.');
     const result = await new Promise((resolve, reject) => {
       const worker = new Worker(path.join(__dirname, 'ocr-worker.cjs'), {
-        workerData: { file: checked.file, size: checked.stat.size },
+        workerData: screenshot
+          ? { bytes: screenshot.bytes }
+          : { file: checked.file, size: checked.stat.size },
       });
       ocrWorker = worker;
       let settled = false;
@@ -367,7 +398,15 @@ async function readFileText(id) {
     controller.signal.throwIfAborted();
     if (generation !== permissions.generation)
       throw new Error('File access changed. Nothing was saved.');
-    return { id, name: path.basename(file), ...result };
+    if (screenshot) clipboardHistory.image(id);
+    else {
+      const current = await permissions.validate(checked.file);
+      if (current.stat.size !== checked.stat.size || current.stat.mtimeMs !== checked.stat.mtimeMs)
+        throw new Error('The file changed while reading. Please try again.');
+    }
+    const response = { id, name: screenshot ? screenshot.title : path.basename(file), ...result };
+    lastOcr = { ...response, file, generation, expires: Date.now() + 5 * 60000 };
+    return response;
   } finally {
     if (fileRequest === controller) fileRequest = null;
   }
@@ -375,7 +414,12 @@ async function readFileText(id) {
 async function query(q, kind) {
   if (typeof q !== 'string' || q.length > 500) throw new Error('Search is too long.');
   const intent = interpretLocal(q);
-  let list = await search.queryAsync(intent?.kind === 'search' ? intent.query : q, kind);
+  let list =
+    !q.trim() && kind === 'clipboard' && store.settings().clipboard
+      ? store.db
+          .prepare("SELECT * FROM entries WHERE kind='clipboard' ORDER BY id DESC LIMIT 30")
+          .all()
+      : await search.queryAsync(intent?.kind === 'search' ? intent.query : q, kind);
   if (
     q.trim().length >= 3 &&
     ['all', 'file'].includes(kind) &&
@@ -399,7 +443,7 @@ async function query(q, kind) {
             : 'Built-in command',
       intent,
     });
-  const results = list.slice(0, 30);
+  const results = list.slice(0, 30).map((item) => clipboardHistory.decorate(item));
   const missing = [
     ...new Set(results.filter((x) => x.kind === 'app' && !icons.has(x.path)).map((x) => x.path)),
   ];
@@ -591,8 +635,12 @@ async function saveSettings(patch) {
     search.nativeCache.clear();
   }
   store.saveSettings(next);
-  if (next.clipboard !== current.clipboard && !next.clipboard)
-    store.db.prepare("DELETE FROM entries WHERE kind='clipboard'").run();
+  if (next.clipboard !== current.clipboard && !next.clipboard) {
+    clipboardHistory.clear();
+    lastOcr = null;
+    fileRequest?.abort();
+    aiRequest?.abort();
+  }
   if (scopeChanged) {
     await search.stop();
     if (!next.content) {
@@ -800,7 +848,9 @@ async function dispatch(method, data = {}) {
       if (!item) throw new Error('This result is no longer available.');
       search.store.touch(item.id);
       if (item.kind === 'clipboard') {
-        clipboard.writeText(item.path);
+        if (clipboardHistory.images.has(item.id))
+          clipboard.writeImage(nativeImage.createFromBuffer(clipboardHistory.image(item.id).bytes));
+        else clipboard.writeText(item.path);
         return { message: 'Copied to clipboard' };
       }
       if (['web', 'bookmark', 'setting'].includes(item.kind)) {
@@ -836,13 +886,67 @@ async function dispatch(method, data = {}) {
       const file = await approvedFile(data.id);
       await permissions.validate(file);
       const actions = require('./file-actions.cjs').fileActions(file);
-      return await require('./ocr.cjs').available() ? actions : actions.filter((action) => action.id !== 'ocr');
+      return (await require('./ocr.cjs').available())
+        ? actions
+        : actions.filter((action) => action.id !== 'ocr');
     }
     case 'file-ocr':
       return readFileText(data.id);
     case 'file-ocr-cancel':
       fileRequest?.abort();
       return true;
+    case 'ocr-enhance': {
+      const tasks = require('./text-intelligence.cjs').tasks;
+      if (!Object.hasOwn(tasks, data.task)) throw new Error('Unsupported text action.');
+      const cached = lastOcr;
+      if (
+        !cached ||
+        cached.id !== data.id ||
+        cached.expires < Date.now() ||
+        cached.generation !== permissions.generation
+      )
+        throw new Error('Read the text again before using AI.');
+      const selected = store.settings().ai;
+      if (selected.provider === 'off' || !selected.model)
+        throw new Error('Connect an AI model first.');
+      aiRequest?.abort();
+      const controller = new AbortController();
+      aiRequest = controller;
+      try {
+        if (cached.file) await permissions.request(cached.file, selected.provider !== 'local');
+        else {
+          clipboardHistory.image(cached.id);
+          if (selected.provider !== 'local') {
+            const result = await dialog.showMessageBox(win, {
+              type: 'question',
+              title: 'Allow AI to process extracted text?',
+              message: tasks[data.task].label,
+              detail: `Up to 16,000 characters of extracted screenshot text will be sent to ${selected.provider}. The image itself is not uploaded. This request can use API quota.`,
+              buttons: ['Cancel', 'Send text'],
+              defaultId: 0,
+              cancelId: 0,
+            });
+            if (result.response !== 1) throw new Error('AI text processing cancelled.');
+          }
+        }
+        controller.signal.throwIfAborted();
+        if (
+          lastOcr !== cached ||
+          cached.generation !== permissions.generation ||
+          cached.expires < Date.now()
+        )
+          throw new Error('Text access changed. Read it again.');
+        return await require('./text-intelligence.cjs').enhance(
+          cached,
+          data.task,
+          selected,
+          secret(selected.provider),
+          controller.signal,
+        );
+      } finally {
+        if (aiRequest === controller) aiRequest = null;
+      }
+    }
     case 'document-find': {
       const text = require('./commands.cjs').validateIntent({
         kind: 'document',
@@ -917,7 +1021,10 @@ async function dispatch(method, data = {}) {
       else search.start();
       return search.status;
     case 'clipboard-clear':
-      store.db.prepare("DELETE FROM entries WHERE kind='clipboard'").run();
+      clipboardHistory.clear();
+      lastOcr = null;
+      fileRequest?.abort();
+      aiRequest?.abort();
       return true;
     case 'models':
       return ai.models(data.provider, data.key || secret(data.provider));
@@ -1201,6 +1308,11 @@ app
   .then(async () => {
     store = createStore(app.getPath('userData'));
     search = new Search(store, send);
+    clipboardHistory = new ClipboardHistory(
+      store,
+      (item) => search.put(item),
+      () => send('clipboard', {}),
+    );
     permissions = new FilePermissions(store, (options) => dialog.showMessageBox(win, options));
     offlineVoice = new OfflineWhisper(
       store.directory,
@@ -1324,31 +1436,21 @@ app
     }, 60000);
     if (!process.argv.includes('--background')) show();
     ready = true;
-    let lastClipboard = '';
+    let lastClipboardSequence;
     const clipboardTimer = setInterval(() => {
-      if (!store.settings().clipboard) return;
-      const text = clipboard.readText();
-      if (!text || text === lastClipboard || text.length > 20000) return;
-      lastClipboard = text;
-      if (
-        clipboard.has('ExcludeClipboardContentFromMonitorProcessing') ||
-        (clipboard.has('CanIncludeInClipboardHistory') &&
-          clipboard.readBuffer('CanIncludeInClipboardHistory').every((x) => x === 0))
-      )
+      if (!store.settings().clipboard) {
+        lastClipboardSequence = undefined;
         return;
-      const id = 'clip:' + Date.now();
-      search.put({
-        id,
-        title: text.replace(/\s+/g, ' ').slice(0, 90),
-        path: text,
-        kind: 'clipboard',
-        detail: 'Clipboard',
-      });
-      store.db
-        .prepare(
-          "DELETE FROM entries WHERE kind='clipboard' AND (CAST(substr(id,6) AS INTEGER)<? OR id NOT IN (SELECT id FROM entries WHERE kind='clipboard' ORDER BY id DESC LIMIT 50))",
-        )
-        .run(Date.now() - 7 * 86400000);
+      }
+      try {
+        clipboardHistory.prune();
+        const sequence = clipboardSequence();
+        if (sequence !== undefined && sequence === lastClipboardSequence) return;
+        lastClipboardSequence = sequence;
+        clipboardHistory.capture(clipboard);
+      } catch {
+        /* Clipboard ownership can change during a read; try the next update. */
+      }
     }, 1000);
     const rescan = setInterval(() => {
       if (store.settings().setup && !search.worker && search.status.state !== 'paused')

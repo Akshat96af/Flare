@@ -33,6 +33,7 @@ Function FlareComponentsCreate
       ReadINIStr $FlareOcrState "$INSTDIR\resources\optional\installed.ini" "Features" "OCR"
       ReadINIStr $FlareVoiceState "$INSTDIR\resources\optional\installed.ini" "Features" "Voice"
       ReadINIStr $FlareModel "$INSTDIR\resources\optional\installed.ini" "Features" "Model"
+      StrCpy $FlareRuntimeState $FlareVoiceState
     ${EndIf}
     StrCpy $FlareComponentsLoaded 1
   ${EndIf}
@@ -65,7 +66,7 @@ Function FlareComponentsCreate
   ${EndIf}
   ${NSD_CreateCheckbox} 0 134u 100% 24u "Microsoft C++ support runtime (its license terms apply)"
   Pop $FlareRuntime
-  ${NSD_SetState} $FlareRuntime $FlareVoiceState
+  ${NSD_SetState} $FlareRuntime $FlareRuntimeState
   EnableWindow $FlareRuntime $FlareVoiceState
   nsDialogs::Show
 FunctionEnd

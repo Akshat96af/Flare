@@ -10,7 +10,9 @@ const allowed = new Set([
   'document-summary',
   'file-actions',
   'file-ocr',
+  'ocr-info',
   'file-ocr-cancel',
+  'ocr-enhance',
   'offline-voice-info',
   'offline-voice-install',
   'offline-voice-cancel',
@@ -74,6 +76,7 @@ contextBridge.exposeInMainWorld('flare', {
         'model-download',
         'offline-download',
         'ocr-progress',
+        'clipboard',
         'share',
         'settings',
       ].includes(event)

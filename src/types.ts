@@ -9,6 +9,7 @@ export type Result = {
   contentMatch?: boolean;
   size?: number;
   modified?: number;
+  clipboardImage?: boolean;
 };
 export type Settings = {
   theme: string;

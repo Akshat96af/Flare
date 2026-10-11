@@ -29,6 +29,7 @@ import {
   Copy,
   Share2,
   FolderOpen,
+  ScanText,
   Ellipsis,
 } from 'lucide-react';
 import { bridge, desktop, basename, fileSize } from './bridge';
@@ -85,6 +86,8 @@ export default function App() {
     [notice, setNotice] = useState(''),
     [error, setError] = useState(''),
     [shortcutError, setShortcutError] = useState('');
+  const [clipboardRevision, setClipboardRevision] = useState(0);
+  useEffect(() => bridge.on('clipboard', () => setClipboardRevision((value) => value + 1)), []);
   const [shareId, setShareId] = useState<string | undefined>(),
     [shareActive, setShareActive] = useState(false);
   const input = useRef<HTMLInputElement>(null),
@@ -98,7 +101,9 @@ export default function App() {
   const searchContext = query + '\0' + kind;
   const results = resultContext === searchContext ? searchResults : [];
   const searching =
-    view === 'search' && !!query.trim() && (searchPending || resultContext !== searchContext);
+    view === 'search' &&
+    (!!query.trim() || kind === 'clipboard') &&
+    (searchPending || resultContext !== searchContext);
   usePressFeedback(panel);
   usePanelMotion(panel, view);
   useLauncherMotion(panel);
@@ -247,7 +252,7 @@ export default function App() {
       setSearching(false);
       return;
     }
-    if (!query.trim()) {
+    if (!query.trim() && kind !== 'clipboard') {
       setResults([]);
       setSearching(false);
       return;
@@ -287,6 +292,7 @@ export default function App() {
     settings?.trustedRoots,
     settings?.content,
     settings?.clipboard,
+    clipboardRevision,
     index.state === 'ready',
     index.state === 'ready' ? index.count : 0,
   ]);
@@ -562,7 +568,11 @@ export default function App() {
       if (intelligenceOn) aiSearch();
       else googleFallback(query);
     }
-    if (e.key === ' ' && e.ctrlKey && results[selected]?.kind === 'file') {
+    if (
+      e.key === ' ' &&
+      e.ctrlKey &&
+      (results[selected]?.kind === 'file' || results[selected]?.clipboardImage)
+    ) {
       e.preventDefault();
       showPreview(results[selected]);
     }
@@ -638,7 +648,7 @@ export default function App() {
             <Settings2 size={19} />
           </button>
         </GlassRail>
-        {view === 'search' && query && (
+        {view === 'search' && (query || kind === 'clipboard') && (
           <div className="search-content">
             <div className="result-toolbar">
               <div className="filter-tabs" role="tablist" aria-label="Search source">
@@ -689,6 +699,29 @@ export default function App() {
                     ? results.length + (results.length === 1 ? ' result' : ' results')
                     : ''}
                 </span>
+                {results[selected]?.clipboardImage && (
+                  <>
+                    <button
+                      className="icon-button"
+                      title="Read screenshot text"
+                      aria-label="Read screenshot text"
+                      onClick={() => {
+                        setOcrFile(results[selected]);
+                        setView('read-text');
+                      }}
+                    >
+                      <ScanText size={17} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="Preview screenshot"
+                      aria-label="Preview screenshot"
+                      onClick={() => showPreview(results[selected])}
+                    >
+                      <Eye size={17} />
+                    </button>
+                  </>
+                )}
                 {results[selected]?.kind === 'file' && (
                   <>
                     {settings?.smartActions && (
@@ -1027,7 +1060,7 @@ export default function App() {
           />
         )}
         {view === 'read-text' && ocrFile && (
-          <ReadText key={ocrFile.id} item={ocrFile} onClose={reset} />
+          <ReadText key={ocrFile.id} item={ocrFile} intelligence={intelligenceOn} onClose={reset} />
         )}
         {view === 'share' && <QuickShare initialFileId={shareId} onClose={reset} />}
         {view === 'tools' && (
@@ -1190,6 +1223,22 @@ export default function App() {
             </button>
           </div>
           <div className="footer-tools">
+            {settings?.clipboard && (
+              <button
+                className="icon-button"
+                title="Clipboard history"
+                aria-label="Clipboard history"
+                aria-pressed={view === 'search' && kind === 'clipboard'}
+                disabled={busy}
+                onClick={() => {
+                  setQuery('');
+                  setKind('clipboard');
+                  setView('search');
+                }}
+              >
+                <Clipboard size={15} />
+              </button>
+            )}
             <button
               className={'icon-button ' + (shareActive ? 'share-active' : '')}
               title={shareActive ? 'Quick Share active' : 'Quick Share'}

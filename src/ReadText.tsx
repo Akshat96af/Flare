@@ -1,13 +1,54 @@
 import { useEffect, useRef, useState } from 'react';
-import { Copy, LoaderCircle, ScanText, X } from 'lucide-react';
+import { Copy, LoaderCircle, ScanText, Sparkles, X } from 'lucide-react';
 import { bridge } from './bridge';
 import type { Result } from './types';
-export default function ReadText({ item, onClose }: { item: Result; onClose: () => void }) {
+import TypedAnswer from './TypedAnswer';
+export default function ReadText({
+  item,
+  onClose,
+  intelligence = false,
+}: {
+  item: Result;
+  onClose: () => void;
+  intelligence?: boolean;
+}) {
   const [result, setResult] = useState<{ text: string; truncated: boolean } | null>(null);
   const [error, setError] = useState(''),
     [copied, setCopied] = useState(false),
     [progress, setProgress] = useState('Reading text locally');
   const started = useRef(false);
+  const [task, setTask] = useState('summary'),
+    [answer, setAnswer] = useState(''),
+    [aiError, setAiError] = useState(''),
+    [aiBusy, setAiBusy] = useState(false);
+  const request = useRef(0),
+    pending = useRef(false);
+  useEffect(
+    () => () => {
+      request.current++;
+      if (pending.current) bridge.call('ai-cancel').catch(() => {});
+    },
+    [],
+  );
+  const enhance = async () => {
+    if (pending.current) return;
+    const id = ++request.current;
+    pending.current = true;
+    setAiBusy(true);
+    setAiError('');
+    setAnswer('');
+    try {
+      const result = await bridge.call('ocr-enhance', { id: item.id, task });
+      if (request.current === id) setAnswer(result.text);
+    } catch (error) {
+      if (request.current === id) setAiError((error as Error).message);
+    } finally {
+      if (request.current === id) {
+        pending.current = false;
+        setAiBusy(false);
+      }
+    }
+  };
   useEffect(() => {
     let active = true;
     const remove = bridge.on('ocr-progress', (data) => {
@@ -37,7 +78,7 @@ export default function ReadText({ item, onClose }: { item: Result; onClose: () 
       <div className="section-heading">
         <div className="heading-group">
           <ScanText size={18} />
-          <h2>Text from file</h2>
+          <h2>{item.clipboardImage ? 'Text from screenshot' : 'Text from file'}</h2>
         </div>
         <button
           className="icon-button"
@@ -87,6 +128,53 @@ export default function ReadText({ item, onClose }: { item: Result; onClose: () 
               {copied ? 'Copied' : 'Copy text'}
             </button>
           </div>
+          {intelligence && result.text && (
+            <div className="text-intelligence">
+              <div className="text-intelligence-controls">
+                <label className="field-label">
+                  AI text action
+                  <select
+                    aria-label="AI text action"
+                    value={task}
+                    disabled={aiBusy}
+                    onChange={(event) => setTask(event.target.value)}
+                  >
+                    <option value="summary">Summarize</option>
+                    <option value="cleanup">Clean up text</option>
+                    <option value="action-items">Extract action items</option>
+                  </select>
+                </label>
+                <button className="subtle" disabled={aiBusy} onClick={enhance}>
+                  {aiBusy ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={15} />}
+                  {aiBusy ? 'Processing' : 'Process with AI'}
+                </button>
+              </div>
+              {aiError && (
+                <p className="inline-error" role="alert">
+                  {aiError}
+                </p>
+              )}
+              {answer && (
+                <>
+                  <TypedAnswer key={answer} text={answer} />
+                  <button
+                    className="icon-button"
+                    title="Copy AI result"
+                    aria-label="Copy AI result"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(answer);
+                      } catch {
+                        setAiError('Could not copy the AI result.');
+                      }
+                    }}
+                  >
+                    <Copy size={16} />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </>
       )}
     </section>

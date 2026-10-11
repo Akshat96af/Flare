@@ -1516,6 +1516,25 @@ select {
   max-width: 46%;
   flex: 0 0 auto;
 }
+.text-intelligence {
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+.text-intelligence-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.text-intelligence-controls .field-label {
+  flex: 1 1 180px;
+  min-width: 0;
+  margin: 0;
+}
+.text-intelligence-controls select {
+  width: 100%;
+}
 @media (max-width: 480px) {
   .permission-location {
     flex-wrap: wrap;

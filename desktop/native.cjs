@@ -16,6 +16,7 @@ function win32() {
       });
     user32 = {
       key: lib.func('short __stdcall GetAsyncKeyState(int key)'),
+      clipboardSequence: lib.func('uint32 __stdcall GetClipboardSequenceNumber()'),
       foreground: lib.func('void* __stdcall GetForegroundWindow()'),
       rect: lib.func('GetWindowRect', 'int', ['void*', koffi.out(koffi.pointer(rect))]),
     };
@@ -48,6 +49,13 @@ function foregroundBounds() {
       return { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top };
   } catch {}
   return null;
+}
+function clipboardSequence() {
+  try {
+    return win32()?.clipboardSequence();
+  } catch {
+    return undefined;
+  }
 }
 function fileAttributes(file) {
   if (process.platform !== 'win32') return 0;
@@ -120,6 +128,7 @@ function powershell(command, data = {}, timeout = 15000) {
 }
 module.exports = {
   chordHeld,
+  clipboardSequence,
   foregroundBounds,
   powershell,
   fileAttributes,

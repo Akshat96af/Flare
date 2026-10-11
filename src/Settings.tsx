@@ -473,7 +473,7 @@ export default function Settings({
             <div className="setting-row">
               <div>
                 <label>Clipboard history</label>
-                <span>Up to 50 text items, for up to 7 days.</span>
+                <span>Up to 50 items. Text: 7 days. Screenshots: this session only.</span>
               </div>
               <Toggle
                 label="Clipboard history"
