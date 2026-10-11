@@ -1066,7 +1066,12 @@ async function dispatch(method, data = {}) {
         Math.max(130, Math.min(Number(data.height) || 150, work.height - 140, 800)),
       );
       const bounds = win.getBounds();
-      if (bounds.height !== height) win.setSize(bounds.width, height);
+      if (bounds.height !== height) {
+        // Fixed Windows windows otherwise retain their previous minimum height.
+        win.setResizable(true);
+        win.setSize(bounds.width, height);
+        win.setResizable(false);
+      }
       return true;
     }
     case 'quit':
