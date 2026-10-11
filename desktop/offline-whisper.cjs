@@ -177,8 +177,14 @@ class OfflineWhisper {
     const model = this.model(id);
     if (this.installing) throw new Error('An offline model download is already running.');
     if (this.bundle) {
-      if (await this.runtimeReady() && await verified(this.modelPath(id), model.sha256, model.size)) return this.info();
-      throw new Error('This voice model was not installed or failed verification. Select Offline Whisper in Flare Setup.');
+      if (
+        (await this.runtimeReady()) &&
+        (await verified(this.modelPath(id), model.sha256, model.size))
+      )
+        return this.info();
+      throw new Error(
+        'This voice model was not installed or failed verification. Select Offline Whisper in Flare Setup.',
+      );
     }
     const controller = new AbortController();
     this.installing = controller;
@@ -232,6 +238,7 @@ class OfflineWhisper {
     )
       throw new Error('Set up offline Whisper in Voice settings first.');
     signal.throwIfAborted();
+    await fs.mkdir(this.root, { recursive: true });
     const directory = await fs.mkdtemp(path.join(this.root, 'recording-'));
     try {
       const wav = path.join(directory, 'recording.wav'),

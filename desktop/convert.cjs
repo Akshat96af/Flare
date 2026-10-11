@@ -14,8 +14,16 @@ async function pdfImages(file, pages = [1], scale = 1.5) {
       const canvas = createCanvas(width, height);
       return { canvas, context: canvas.getContext('2d') };
     }
-    reset(surface, width, height) { surface.canvas.width = width; surface.canvas.height = height; }
-    destroy(surface) { surface.canvas.width = 0; surface.canvas.height = 0; surface.canvas = null; surface.context = null; }
+    reset(surface, width, height) {
+      surface.canvas.width = width;
+      surface.canvas.height = height;
+    }
+    destroy(surface) {
+      surface.canvas.width = 0;
+      surface.canvas.height = 0;
+      surface.canvas = null;
+      surface.context = null;
+    }
   }
   global.DOMMatrix ||= DOMMatrix;
   global.Path2D ||= Path2D;

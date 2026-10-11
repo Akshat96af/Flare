@@ -65,11 +65,13 @@ async function walk(dir) {
         previous.content &&
         !store.db.prepare('SELECT rowid FROM content_fts WHERE rowid=?').get(previous.rowid))
     ) {
-      let content = '', usedOcr = false;
+      let content = '',
+        usedOcr = false;
       try {
         if (readContents && !(fileAttributes(file) & 0x2000)) {
           content = await extract(file, stat.size, { ocr: settings.ocr, recognizer });
-          usedOcr = !!content && settings.ocr && imageExtensions.has(path.extname(file).toLowerCase());
+          usedOcr =
+            !!content && settings.ocr && imageExtensions.has(path.extname(file).toLowerCase());
           if (settings.ocr && !content.trim() && path.extname(file).toLowerCase() === '.pdf') {
             usedOcr = true;
             content = (
@@ -84,7 +86,8 @@ async function walk(dir) {
         .prepare('INSERT OR REPLACE INTO entries VALUES(?,?,?,?,?,?,?,?)')
         .run(id, entry.name, file, 'file', path.dirname(file), stat.mtimeMs, stat.size, content);
       const rowid = store.db.prepare('SELECT rowid FROM entries WHERE id=?').get(id).rowid;
-      if (usedOcr && content) store.db.prepare('INSERT OR REPLACE INTO ocr_entries VALUES(?)').run(id);
+      if (usedOcr && content)
+        store.db.prepare('INSERT OR REPLACE INTO ocr_entries VALUES(?)').run(id);
       store.db.prepare('DELETE FROM content_fts WHERE rowid=?').run(rowid);
       if (content)
         store.db

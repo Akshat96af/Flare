@@ -31,7 +31,9 @@ function createRecognizer() {
       worker = await require('tesseract.js').createWorker('eng', 1, {
         langPath: path.dirname(file),
         cacheMethod: 'none',
-        workerPath: require.resolve('tesseract.js/src/worker-script/node/index.js').replace(/app\.asar([\\/])/, 'app.asar.unpacked$1'),
+        workerPath: require
+          .resolve('tesseract.js/src/worker-script/node/index.js')
+          .replace(/app\.asar([\\/])/, 'app.asar.unpacked$1'),
       });
     }
     const bytes = await require('sharp')(image, { limitInputPixels: 20000000 })

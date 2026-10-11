@@ -547,9 +547,24 @@ kbd {
 .offline-voice-setup h3 {
   margin: 0;
 }
-.voice-recording { display: block; width: 100%; max-width: 330px; height: 38px; margin: 16px auto 0; }
-.voice-input-level { width: 180px; max-width: 100%; margin: auto; }
-.voice-input-level meter { width: 100%; height: 6px; display: block; margin: 12px 0; }
+.voice-recording {
+  display: block;
+  width: 100%;
+  max-width: 330px;
+  height: 38px;
+  margin: 16px auto 0;
+}
+.voice-input-level {
+  width: 180px;
+  max-width: 100%;
+  margin: auto;
+}
+.voice-input-level meter {
+  width: 100%;
+  height: 6px;
+  display: block;
+  margin: 12px 0;
+}
 @media (max-width: 560px) {
   .file-action-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -1202,21 +1202,26 @@ app
     offlineVoice = new OfflineWhisper(
       store.directory,
       send,
-      app.isPackaged ? path.join(process.resourcesPath, 'optional/voice') : path.join(__dirname, '../Files/private/setup-payload/voice'),
+      app.isPackaged
+        ? path.join(process.resourcesPath, 'optional/voice')
+        : path.join(__dirname, '../Files/private/setup-payload/voice'),
     );
     if (app.isPackaged) {
       try {
-        const choices = await fs.readFile(path.join(process.resourcesPath, 'optional/installed.json'), 'utf8');
+        const choices = await fs.readFile(
+          path.join(process.resourcesPath, 'optional/installed.json'),
+          'utf8',
+        );
         const selected = JSON.parse(choices);
         if (store.get('setup-components-applied', '') !== choices) {
-        store.saveSettings({
-          ...store.settings(),
-          smartActions: selected.actions === true,
-          ocr: selected.ocr === true,
-          speechEngine: selected.voice === true ? 'whisper' : 'windows',
-          whisperModel: selected.model === 'tiny.en' ? 'tiny.en' : 'base.en',
-        });
-        store.set('setup-components-applied', choices);
+          store.saveSettings({
+            ...store.settings(),
+            smartActions: selected.actions === true,
+            ocr: selected.ocr === true,
+            speechEngine: selected.voice === true ? 'whisper' : 'windows',
+            whisperModel: selected.model === 'tiny.en' ? 'tiny.en' : 'base.en',
+          });
+          store.set('setup-components-applied', choices);
         }
       } catch {
         /* Portable builds keep optional features off until explicitly enabled. */

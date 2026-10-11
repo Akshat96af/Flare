@@ -73,8 +73,8 @@
       "desktop/*.ps1",
       "node_modules/sharp/**",
       "node_modules/@img/**",
-      "node_modules/koffi/**"
-      ,"node_modules/tesseract.js/**",
+      "node_modules/koffi/**",
+      "node_modules/tesseract.js/**",
       "node_modules/tesseract.js-core/**"
     ],
     "directories": {
