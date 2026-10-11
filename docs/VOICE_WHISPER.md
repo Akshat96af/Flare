@@ -3,6 +3,13 @@
 Flare now records one selected microphone stream. The same stream supplies the meter, local Windows recognition and optional cloud transcription. Windows receives a temporary mono 16 kHz PCM WAV instead of opening another microphone. The recording is removed when recognition ends. Cancelling kills recognition and releases microphone tracks.
 
 Windows speech remains available without an API key, but its dictation accuracy varies. A synthetic speech test on this computer returned a transcript and misheard YouTube; microphone routing is repaired, while Windows accuracy is not guaranteed.
+## Offline Whisper
+
+Choose Offline Whisper in Flare Setup, then choose Fast (tiny.en) or Balanced (base.en). Engine and model data are inside the installer. The separately offered Microsoft C++ support runtime may require administrator approval; it is not installed unless selected. You can switch between Windows speech and installed Whisper models in Settings > Intelligence > On-device voice, even with chat AI off.
+
+Whisper runs the captured mono 16 kHz recording through the official CPU-only Whisper.cpp engine. Models and runtime files are checksum-verified before use. Offline mode blocks online transcription, including automatic fallback. Temporary WAV/transcript files are removed on completion or cancellation. Replay audio stays in memory only while Voice is open. A live microphone test on different hardware is still required; a local synthetic English command successfully transcribed with the bundled Fast model.
+
+Declined model components stay unavailable; rerun Setup to add them. No background model download occurs on a user's installed copy. Source builds use the private payload cache prepared by `npm run payloads`.
 
 For the stronger transcription option:
 

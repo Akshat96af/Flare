@@ -44,17 +44,18 @@ const AxeBuilder = require('@axe-core/playwright').default;
         timeout: 60000,
       })
       .toBe(true);
-    await instance.evaluate(({ dialog }, output) => {
-      global.localFeatures = { consent: 0, decision: 0 };
+    await instance.evaluate(({ dialog }, locations) => {
+      global.localFeatures = { consent: 0, decision: 0, picks: [locations.folder, locations.output] };
       dialog.showMessageBox = async () => {
         global.localFeatures.consent++;
         return { response: global.localFeatures.decision };
       };
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [output] });
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [global.localFeatures.picks.shift() || locations.output] });
       global.fetch = async () => {
         throw new Error('Local features must not use the network');
       };
-    }, output);
+    }, { folder, output });
+    await page.evaluate(() => window.flare.call('pick', { kind: 'folder' }));
     await page.evaluate(
       (folder) =>
         window.flare.call('settings', {

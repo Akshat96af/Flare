@@ -3,8 +3,8 @@ const path = require('node:path');
 const { ocrImages } = require('./file-actions.cjs');
 
 function languageFile() {
-  if (process.resourcesPath && __dirname.includes('app.asar'))
-    return path.join(process.resourcesPath, 'optional/ocr/eng.traineddata.gz');
+  if (__dirname.includes('app.asar'))
+    return path.join(__dirname.slice(0, __dirname.indexOf('app.asar')), 'optional/ocr/eng.traineddata.gz');
   return path.join(
     path.dirname(require.resolve('@tesseract.js-data/eng')),
     '4.0.0_best_int/eng.traineddata.gz',

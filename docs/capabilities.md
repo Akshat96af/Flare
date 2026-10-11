@@ -7,12 +7,13 @@
 | Files/folders | Selected locations, SQLite, exact/fuzzy ranking, usage learning | No elevation; network shares not validated |
 | Windows Search | Scoped filename fallback | Depends on Windows service and existing coverage |
 | Changes | Watcher-triggered scans reuse unchanged extraction; 10-minute fallback | Not a USN-journal index; metadata is rescanned |
-| Content | Text/code/Markdown, PDF text, DOCX/XLSX/PPTX | 12 MB input, 160,000 characters, 150 PDF pages; no OCR |
+| Content | Text/code/Markdown, PDF text, DOCX/XLSX/PPTX; opt-in local image/scanned-PDF OCR | Content-allowed folders only; 12 MB input, 160,000 characters; OCR first 10 PDF pages |
+| File actions | Format-aware selected-file actions; prefilled conversion, resizing, summaries, OCR, sharing | Declined OCR component is hidden; originals and Undo remain protected |
 | Photos | Month/year and ISO dates; EXIF preferred | Labeled modified-date fallback; UTC calendar date fields |
 | Bookmarks | Read-only Chrome/Edge Default/Profile N | No Firefox, browser sync, or live watcher |
 | Clipboard | Opt-in, 50 text items/7 days, clear/disable | Database not encrypted; no perfect secret detection |
-| Voice | English Windows speech, amplitude animation, transcript review, silence/push modes | Speech pack and microphone required; not Whisper |
-| AI | BYOK text-model discovery, safe commands/answers, empty-search Ask AI, Ollama | No indexed file access, embeddings, file summaries, or arbitrary automation; discovery does not guarantee generation access |
+| Voice | Windows speech, optional offline Whisper, opt-in provider transcription, recording replay and meter | English; offline models selected during Setup; actual microphone accuracy varies |
+| AI | BYOK discovery, validated commands/answers, Ask AI, Ollama, consent-gated document summaries | No unrestricted indexed-file access, embeddings or arbitrary automation; discovery does not guarantee generation access |
 | Local setup | Official installer link, model detection, approved download with progress/cancel | Installation user-managed; canceled chunks may remain |
 | System | Default output volume and laptop brightness | No DDC/CI external-monitor control |
 | Organization | Chosen folder's immediate regular files by type/month | 500 candidates; no recursive AI renames |
@@ -22,6 +23,7 @@
 ## Conversion
 
 - Image conversion/compression: JPEG, PNG, WebP, AVIF, GIF, TIFF outputs. BMP/HEIC support is not promised.
+- Image resizing uses a maximum width of 16-8000 pixels, preserves aspect ratio, never enlarges the source, and creates a new reviewed copy.
 - Images to PDF; PDF pages to PNG; PDF merge/split/extract. Unencrypted PDFs only; split/render up to 200 pages.
 - Images, PDF first page, and document text previews with metadata.
 - Up to 100 regular inputs under 100 MB each. Decode pixels and worker time are bounded.

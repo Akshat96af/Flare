@@ -835,7 +835,8 @@ async function dispatch(method, data = {}) {
     case 'file-actions': {
       const file = await approvedFile(data.id);
       await permissions.validate(file);
-      return require('./file-actions.cjs').fileActions(file);
+      const actions = require('./file-actions.cjs').fileActions(file);
+      return await require('./ocr.cjs').available() ? actions : actions.filter((action) => action.id !== 'ocr');
     }
     case 'file-ocr':
       return readFileText(data.id);

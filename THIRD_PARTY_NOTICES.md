@@ -5,6 +5,7 @@ Flare source retains the repository's MIT license. Dependencies retain their own
 [Runtime notices](notices/dependencies.txt) contain the copyright and license texts from installed production packages. Regenerate with `npm run notices` after updating dependencies.
 
 Principal components: React (MIT), Lucide (ISC), Koffi (MIT), sharp (Apache-2.0), PDF.js (Apache-2.0), pdf-lib (MIT), Mammoth (BSD-2-Clause), fast-xml-parser (MIT), mathjs (Apache-2.0), exif-reader (MIT), yauzl (MIT), and @napi-rs/canvas (MIT). Supplied notices and the lockfile identify exact versions.
+Local OCR uses Tesseract.js (Apache-2.0) and its English language-data package (MIT). All recognition uses local model data; no OCR CDN is used at runtime.
 
 ## Native Libraries
 
@@ -17,3 +18,6 @@ Electron distributions include Electron's `LICENSE` and Chromium's `LICENSES.chr
 ## Optional Models
 
 No Ollama binaries or model weights are bundled. The optional [Qwen 2.5 1.5B download](https://ollama.com/library/qwen2.5:1.5b) is Apache-2.0. Other user-selected models and API services have their own terms.
+Setup bundles unmodified [Whisper.cpp 1.8.4](https://github.com/ggml-org/whisper.cpp/releases/tag/v1.8.4) CPU binaries and English tiny/base model weights from the pinned [official Whisper.cpp model repository](https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1). Their MIT notices are generated into `notices/whisper-runtime-LICENSE.txt` and `notices/whisper-model-LICENSE.txt` and included in the application.
+
+The optional Microsoft Visual C++ support installer is downloaded from Microsoft and Authenticode-verified at build time. It is governed by Microsoft's license terms, not Flare's MIT license. Review [Microsoft's redistribution requirements](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files) before publishing the installer; redistribution is restricted to licensed Visual Studio users. The setup checkbox is separate and unchecked when offline voice is not selected.

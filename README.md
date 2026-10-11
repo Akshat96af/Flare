@@ -33,6 +33,9 @@ Use `npm run desktop:dev` for live UI development. `npm run dev` is a browser pr
 - Liquid-glass edges, pointer reflections, and elastic controls work in light/dark modes. Turn glass off in Settings; reduced-motion preferences are respected.
 - Quick Share creates a 10-minute file link and QR code on a trusted local network. Transfers are unencrypted HTTP, require approval, and can be stopped from the panel or tray. No hosting is required.
 - File results include Show in folder, Copy path and Share actions.
+- Smart File Actions add a format-aware action tray with prefilled conversion, resizing, PDF page tools, summaries, local OCR and sharing. Outputs still use the review and Undo flow.
+- Setup includes optional local OCR and offline Whisper (Fast or Balanced English), including their model data. Choose components in the installer; declined components are removed before setup finishes. Whisper's Microsoft support runtime is a separate opt-in. No installation-time model downloads are needed.
+- OCR searches image text and scanned PDFs only when enabled in Search locations and only inside content-allowed folders. Filename indexing runs first; OCR follows as a local second pass. Individual Read text actions ask for session access without silently indexing the file.
 
 Examples: `open YouTube`, `volume max`, `brightness 50 percent`, `12 * (3 + 4)`, `find photos from June 2025`, `photos 2025-06-12`, `search drives D and E for invoice`.
 
@@ -56,7 +59,7 @@ See [Gemini and voice setup](docs/GEMINI_AND_VOICE.md) for connection testing, m
 
 See [capabilities](docs/capabilities.md), [architecture](docs/architecture.md), and [verification](docs/verification.md).
 
-This is an initial working build, not a finished autonomous assistant. No OCR, arbitrary shell execution, AI permanent deletion, universal conversion, or external-monitor DDC brightness. Large indexes, unusual documents, live speech, and provider/model compatibility need further validation.
+This is an initial working build, not a finished autonomous assistant. No arbitrary shell execution, AI permanent deletion, universal conversion, or external-monitor DDC brightness. OCR is English, limited to 12 MB inputs, 160,000 characters and the first 10 PDF pages; accuracy varies. Large indexes, unusual documents, live speech, and provider/model compatibility need further validation.
 
 Recovery does not expire automatically. Undo skips later edits and occupied original locations, and cannot recover missing backups. Removing the data folder can destroy recovery availability.
 
@@ -73,11 +76,13 @@ npm run test:ai-music
 npm run test:settings-motion
 npm run test:assistant
 npm run test:launch-motion
+npm run test:local-features
 npm run format:check
 npm run package
 ```
 
 Packaging creates an NSIS installer and ZIP under `release/`. Initial dependency/packaging downloads need internet. Desktop tests use isolated data and generated private fixtures, not your personal files. Close Flare before testing to release its global shortcut.
+`npm run payloads` verifies and caches the optional model data, official Whisper CPU runtime, and Microsoft-signed support installer under ignored `Files/private/`. The full installer is larger because it includes both English voice models. Review Microsoft runtime redistribution terms before publishing binaries. Portable ZIPs include all optional payloads but keep OCR and offline voice off until enabled in Settings.
 
 Private plans/prompts/references/evidence stay in ignored `Files/private/`. Generated dependencies and builds are ignored too. Do not force-add private material.
 
