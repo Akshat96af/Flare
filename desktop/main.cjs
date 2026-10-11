@@ -1153,6 +1153,8 @@ async function dispatch(method, data = {}) {
       stopVoice(true);
       return true;
     case 'voice-transcribe': {
+      if (store.settings().speechEngine === 'whisper')
+        throw new Error('Offline voice never uploads recordings.');
       voiceRequest?.abort();
       const controller = new AbortController();
       voiceRequest = controller;

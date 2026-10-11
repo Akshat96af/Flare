@@ -23,6 +23,7 @@
     "test:assistant": "node scripts/assistant-smoke.cjs",
     "test:launch-motion": "node scripts/launcher-motion-smoke.cjs",
     "test:shadow": "node scripts/shadow-smoke.cjs",
+    "test:local-features": "node scripts/local-features-smoke.cjs",
     "assets": "node scripts/assets.cjs",
     "payloads": "node scripts/setup-payloads.cjs",
     "notices": "node scripts/notices.cjs",

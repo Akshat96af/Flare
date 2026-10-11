@@ -35,6 +35,11 @@ const path = require('node:path');
   );
   console.log('Collected ' + sections.length + ' runtime dependency notices.');
   for (const [file, url] of [
+    [
+      'whisper-runtime-LICENSE.txt',
+      'https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.8.4/LICENSE',
+    ],
+    ['whisper-model-LICENSE.txt', 'https://raw.githubusercontent.com/openai/whisper/main/LICENSE'],
     ['libvips-LICENSE.txt', 'https://raw.githubusercontent.com/libvips/libvips/v8.18.7/LICENSE'],
     [
       'native-imaging-NOTICES.md',

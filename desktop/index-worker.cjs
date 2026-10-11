@@ -14,6 +14,7 @@ let count = 0,
   failures = 0,
   lastEmit = 0;
 const recognizer = settings.ocr ? require('./ocr.cjs').createRecognizer() : null;
+const pendingOcr = [];
 async function walk(dir) {
   if (unsafeFile(dir) || excluded(dir, settings.exclusions)) return;
   let entries;
@@ -65,19 +66,17 @@ async function walk(dir) {
         previous.content &&
         !store.db.prepare('SELECT rowid FROM content_fts WHERE rowid=?').get(previous.rowid))
     ) {
-      let content = '',
-        usedOcr = false;
+      let content = '';
       try {
         if (readContents && !(fileAttributes(file) & 0x2000)) {
-          content = await extract(file, stat.size, { ocr: settings.ocr, recognizer });
-          usedOcr =
-            !!content && settings.ocr && imageExtensions.has(path.extname(file).toLowerCase());
-          if (settings.ocr && !content.trim() && path.extname(file).toLowerCase() === '.pdf') {
-            usedOcr = true;
-            content = (
-              await require('./ocr.cjs').readOcr(file, stat.size, { recognizer, maxPages: 10 })
-            ).text;
-          }
+          content = await extract(file, stat.size);
+          if (
+            settings.ocr &&
+            stat.size <= 12 * 1024 * 1024 &&
+            (require('./file-actions.cjs').ocrImages.has(path.extname(file).toLowerCase()) ||
+              (!content.trim() && path.extname(file).toLowerCase() === '.pdf'))
+          )
+            pendingOcr.push({ id, file, size: stat.size, modified: stat.mtimeMs });
         }
       } catch {
         failures++;
@@ -86,8 +85,6 @@ async function walk(dir) {
         .prepare('INSERT OR REPLACE INTO entries VALUES(?,?,?,?,?,?,?,?)')
         .run(id, entry.name, file, 'file', path.dirname(file), stat.mtimeMs, stat.size, content);
       const rowid = store.db.prepare('SELECT rowid FROM entries WHERE id=?').get(id).rowid;
-      if (usedOcr && content)
-        store.db.prepare('INSERT OR REPLACE INTO ocr_entries VALUES(?)').run(id);
       store.db.prepare('DELETE FROM content_fts WHERE rowid=?').run(rowid);
       if (content)
         store.db
@@ -126,6 +123,42 @@ async function walk(dir) {
       ),
   );
   for (const root of roots) await walk(root);
+  // Publish filenames before doing expensive local recognition in allowed folders.
+  for (const item of pendingOcr) {
+    try {
+      const stat = await fs.lstat(item.file);
+      if (
+        stat.isSymbolicLink() ||
+        !stat.isFile() ||
+        unsafeFile(item.file) ||
+        fileAttributes(item.file) & 0x2000 ||
+        stat.size !== item.size ||
+        stat.mtimeMs !== item.modified
+      )
+        continue;
+      parentPort.postMessage({
+        state: 'indexing',
+        count,
+        current: 'Reading text: ' + item.file,
+        failures,
+      });
+      const result = await require('./ocr.cjs').readOcr(item.file, item.size, {
+        recognizer,
+        maxPages: 10,
+      });
+      if (!result.text) continue;
+      const row = store.db.prepare('SELECT rowid,title FROM entries WHERE id=?').get(item.id);
+      if (!row) continue;
+      store.db.prepare('UPDATE entries SET content=? WHERE id=?').run(result.text, item.id);
+      store.db.prepare('DELETE FROM content_fts WHERE rowid=?').run(row.rowid);
+      store.db
+        .prepare('INSERT INTO content_fts(rowid,id,title,content) VALUES(?,?,?,?)')
+        .run(row.rowid, item.id, row.title, result.text);
+      store.db.prepare('INSERT OR REPLACE INTO ocr_entries VALUES(?)').run(item.id);
+    } catch {
+      failures++;
+    }
+  }
   // Sweep only entries in the current scope; disconnected drives retain no live results.
   const old = store.db.prepare("SELECT id FROM entries WHERE kind IN ('file','folder')").all();
   store.db.exec('BEGIN');

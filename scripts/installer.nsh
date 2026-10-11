@@ -10,6 +10,8 @@ Var FlareOcrState
 Var FlareVoiceState
 Var FlareModel
 Var FlareComponentsLoaded
+Var FlareRuntime
+Var FlareRuntimeState
 
 !macro customInit
   StrCpy $FlareActionsState 1
@@ -17,6 +19,7 @@ Var FlareComponentsLoaded
   StrCpy $FlareVoiceState 0
   StrCpy $FlareModel "base.en"
   StrCpy $FlareComponentsLoaded 0
+  StrCpy $FlareRuntimeState 0
 !macroend
 
 !macro customPageAfterChangeDir
@@ -50,6 +53,7 @@ Function FlareComponentsCreate
   ${NSD_CreateCheckbox} 0 88u 100% 18u "Offline Whisper - English voice recognition"
   Pop $FlareVoice
   ${NSD_SetState} $FlareVoice $FlareVoiceState
+  ${NSD_OnClick} $FlareVoice FlareVoiceChanged
   ${NSD_CreateRadioButton} 12u 110u 45% 18u "Fast (82 MB)"
   Pop $FlareFast
   ${NSD_CreateRadioButton} 52% 110u 48% 18u "Balanced (152 MB)"
@@ -59,13 +63,25 @@ Function FlareComponentsCreate
   ${Else}
     ${NSD_Check} $FlareBalanced
   ${EndIf}
+  ${NSD_CreateCheckbox} 0 134u 100% 24u "Microsoft C++ support runtime (its license terms apply)"
+  Pop $FlareRuntime
+  ${NSD_SetState} $FlareRuntime $FlareVoiceState
+  EnableWindow $FlareRuntime $FlareVoiceState
   nsDialogs::Show
+FunctionEnd
+
+Function FlareVoiceChanged
+  Pop $0
+  ${NSD_GetState} $FlareVoice $FlareVoiceState
+  EnableWindow $FlareRuntime $FlareVoiceState
+  ${NSD_SetState} $FlareRuntime $FlareVoiceState
 FunctionEnd
 
 Function FlareComponentsLeave
   ${NSD_GetState} $FlareActions $FlareActionsState
   ${NSD_GetState} $FlareOcr $FlareOcrState
   ${NSD_GetState} $FlareVoice $FlareVoiceState
+  ${NSD_GetState} $FlareRuntime $FlareRuntimeState
   ${NSD_GetState} $FlareFast $0
   ${If} $0 == ${BST_CHECKED}
     StrCpy $FlareModel "tiny.en"
@@ -75,6 +91,22 @@ Function FlareComponentsLeave
 FunctionEnd
 
 !macro customInstall
+  ${If} $FlareVoiceState == ${BST_CHECKED}
+  ${AndIf} $FlareRuntimeState == ${BST_CHECKED}
+    SetRegView 64
+    ReadRegDWORD $0 HKLM "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" "Minor"
+    ${If} $0 < 44
+      ExecWait '"$INSTDIR\resources\optional\support\vc_redist.x64.exe" /install /passive /norestart' $0
+      ${If} $0 == 3010
+        SetRebootFlag true
+      ${ElseIf} $0 != 0
+        MessageBox MB_ICONEXCLAMATION "The support runtime could not be installed. Offline Whisper is skipped; Windows speech remains available."
+        StrCpy $FlareVoiceState 0
+      ${EndIf}
+    ${EndIf}
+    SetRegView 32
+  ${EndIf}
+  RMDir /r "$INSTDIR\resources\optional\support"
   ${If} $FlareOcrState != ${BST_CHECKED}
     RMDir /r "$INSTDIR\resources\optional\ocr"
   ${EndIf}

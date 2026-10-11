@@ -188,10 +188,11 @@ class OfflineWhisper {
     }
     const controller = new AbortController();
     this.installing = controller;
-    await fs.mkdir(this.root, { recursive: true });
-    const staging = await fs.mkdtemp(path.join(this.root, 'install-'));
+    let staging;
     const signal = controller.signal;
     try {
+      await fs.mkdir(this.root, { recursive: true });
+      staging = await fs.mkdtemp(path.join(this.root, 'install-'));
       const emit = (status) => (progress) =>
         this.emit('offline-download', { model: id, status, ...progress });
       const space = await fs.statfs(this.root);
@@ -221,7 +222,7 @@ class OfflineWhisper {
       });
     } finally {
       if (this.installing === controller) this.installing = null;
-      await fs.rm(staging, { recursive: true, force: true });
+      if (staging) await fs.rm(staging, { recursive: true, force: true });
     }
     return this.info();
   }
