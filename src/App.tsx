@@ -29,6 +29,7 @@ import {
   Copy,
   Share2,
   FolderOpen,
+  Ellipsis,
 } from 'lucide-react';
 import { bridge, desktop, basename, fileSize } from './bridge';
 import type { Result, Settings as Prefs, IndexStatus, Operation } from './types';
@@ -41,6 +42,8 @@ import GlassRail from './GlassRail';
 import { usePressFeedback } from './usePressFeedback';
 import { useLauncherMotion, usePanelMotion } from './usePanelMotion';
 import HoverLens from './HoverLens';
+import FileActions, { type FileAction } from './FileActions';
+import ReadText from './ReadText';
 
 const icons: Record<string, any> = {
   app: AppWindow,
@@ -64,6 +67,9 @@ export default function App() {
     [view, setView] = useState('search'),
     [tool, setTool] = useState(''),
     [toolMode, setToolMode] = useState('type'),
+    [toolFiles, setToolFiles] = useState<string[]>([]),
+    [actionFile, setActionFile] = useState<Result | null>(null),
+    [ocrFile, setOcrFile] = useState<Result | null>(null),
     [settingsPage, setSettingsPage] = useState('general'),
     [aiAnswer, setAiAnswer] = useState(''),
     [aiBusy, setAiBusy] = useState(false),
@@ -227,6 +233,7 @@ export default function App() {
     previewSequence.current++;
     setPreviewBusy(false);
     setPreview(null);
+    setActionFile(null);
   }, [query, kind, view]);
   useEffect(() => {
     if (view === 'search') requestAnimationFrame(() => input.current?.focus());
@@ -311,8 +318,8 @@ export default function App() {
       setAiBusy(true);
       try {
         let result;
-        if (/^(this|this (?:file|document)|document|file)$/i.test(intent.query)) {
-          let documentId = preview?.id;
+        if (intent.id || /^(this|this (?:file|document)|document|file)$/i.test(intent.query)) {
+          let documentId = intent.id || preview?.id;
           if (!documentId) {
             const files = await bridge.call('pick', { kind: 'document' });
             documentId = files[0];
@@ -361,6 +368,7 @@ export default function App() {
     } else if (intent?.kind === 'fallback') {
       await googleFallback(original);
     } else if (intent?.kind === 'tool') {
+      setToolFiles([]);
       setTool(intent.tool);
       setToolMode(intent.mode || 'type');
       setView('tools');
@@ -508,6 +516,29 @@ export default function App() {
     setPreview(null);
     setPlan(null);
     setError('');
+    setToolFiles([]);
+    setOcrFile(null);
+  };
+  const fileAction = (item: Result, action: FileAction) => {
+    if (action.tool) {
+      setTool(action.tool);
+      setToolFiles([item.id]);
+      setToolMode('type');
+      setView('tools');
+    } else if (action.id === 'preview') showPreview(item);
+    else if (action.id === 'share') {
+      setShareId(item.id);
+      setView('share');
+    } else if (action.id === 'ocr') {
+      setOcrFile(item);
+      setView('read-text');
+    } else if (action.id === 'summary')
+      act(() => handleIntent({ kind: 'document', id: item.id }, item.title));
+    else
+      act(async () => {
+        const result = await bridge.call('result-action', { id: item.id, action: action.id });
+        setNotice(result.message);
+      });
   };
   const keyDown = (e: React.KeyboardEvent) => {
     if (view !== 'search' || e.target !== input.current || e.nativeEvent.isComposing) return;
@@ -660,6 +691,17 @@ export default function App() {
                 </span>
                 {results[selected]?.kind === 'file' && (
                   <>
+                    {settings?.smartActions && (
+                      <button
+                        className="icon-button"
+                        title="File actions"
+                        aria-label={'File actions for ' + results[selected].title}
+                        aria-expanded={!!actionFile}
+                        onClick={() => setActionFile(actionFile ? null : results[selected])}
+                      >
+                        <Ellipsis size={18} />
+                      </button>
+                    )}
                     <button
                       className="icon-button"
                       title="Share file"
@@ -773,6 +815,14 @@ export default function App() {
                 );
               })}
             </div>
+            {actionFile && (
+              <FileActions
+                key={actionFile.id}
+                item={actionFile}
+                onClose={() => setActionFile(null)}
+                onAction={(action) => fileAction(actionFile, action)}
+              />
+            )}
             {!results.length && !aiAnswer && (
               <div className="empty">
                 {aiBusy || searching ? (
@@ -976,10 +1026,15 @@ export default function App() {
             onClose={reset}
           />
         )}
+        {view === 'read-text' && ocrFile && (
+          <ReadText key={ocrFile.id} item={ocrFile} onClose={reset} />
+        )}
         {view === 'share' && <QuickShare initialFileId={shareId} onClose={reset} />}
         {view === 'tools' && (
           <Tools
+            key={tool + toolFiles.join('|')}
             initial={tool}
+            initialFiles={toolFiles}
             initialMode={toolMode}
             autoConvert={!!autoConvert}
             onClose={reset}
@@ -1156,6 +1211,7 @@ export default function App() {
               disabled={busy}
               onClick={() => {
                 setTool('');
+                setToolFiles([]);
                 setToolMode('type');
                 setView(view === 'tools' ? 'search' : 'tools');
               }}

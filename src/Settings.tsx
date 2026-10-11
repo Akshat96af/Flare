@@ -18,6 +18,7 @@ import {
 import { bridge, desktop, basename } from './bridge';
 import type { Settings as Prefs, IndexStatus } from './types';
 import { usePanelMotion } from './usePanelMotion';
+import OfflineVoiceSetup from './OfflineVoiceSetup';
 function Toggle({
   checked,
   onChange,
@@ -72,6 +73,7 @@ export default function Settings({
     [speechModel, setSpeechModel] = useState(value.ai.speechModel || ''),
     [connected, setConnected] = useState('');
   const [local, setLocal] = useState<any>(null),
+    [ocrAvailable, setOcrAvailable] = useState(false),
     [download, setDownload] = useState<any>(null),
     [downloading, setDownloading] = useState(false),
     [approveDownload, setApproveDownload] = useState(false);
@@ -86,6 +88,13 @@ export default function Settings({
         .catch(() => {});
   }, [provider]);
   useEffect(() => bridge.on('model-download', setDownload), []);
+  useEffect(() => {
+    if (desktop)
+      bridge
+        .call('ocr-info')
+        .then((info) => setOcrAvailable(info.available))
+        .catch(() => {});
+  }, []);
   useEffect(() => {
     setTested('');
     setTestApproval(false);
@@ -472,6 +481,30 @@ export default function Settings({
                 onChange={() => save({ clipboard: !value.clipboard })}
               />
             </div>
+            <div className="setting-row">
+              <div>
+                <label>Text in images and scans</label>
+                <span>
+                  {ocrAvailable ? 'Local OCR / allowed folders only' : 'Local OCR not installed'}
+                </span>
+              </div>
+              <Toggle
+                label="Search image text"
+                checked={value.ocr}
+                disabled={!ocrAvailable || !value.content}
+                onChange={() => save({ ocr: !value.ocr })}
+              />
+            </div>
+            <div className="setting-row">
+              <div>
+                <label>Smart file actions</label>
+              </div>
+              <Toggle
+                label="Smart file actions"
+                checked={value.smartActions}
+                onChange={() => save({ smartActions: !value.smartActions })}
+              />
+            </div>
             {value.clipboard && (
               <button
                 className="text-button"
@@ -798,6 +831,7 @@ export default function Settings({
             >
               Save connection <Check size={15} />
             </button>
+            <OfflineVoiceSetup settings={value} onChange={onChange} />
           </>
         )}
         {page === 'safety' && (

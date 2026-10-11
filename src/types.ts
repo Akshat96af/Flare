@@ -20,6 +20,10 @@ export type Settings = {
   trust: string;
   developer: boolean;
   content: boolean;
+  ocr: boolean;
+  smartActions: boolean;
+  speechEngine: 'windows' | 'whisper';
+  whisperModel: string;
   setup: boolean;
   roots: string[];
   allDrives: boolean;

@@ -14,6 +14,10 @@ const defaults = {
   trust: 'cautious',
   developer: false,
   content: true,
+  ocr: false,
+  smartActions: true,
+  speechEngine: 'windows',
+  whisperModel: 'base.en',
   setup: false,
   roots: [],
   allDrives: true,
@@ -61,6 +65,10 @@ function createStore(directory, { machine = os.hostname() + '|' + os.homedir() }
     CREATE TABLE IF NOT EXISTS usage(id TEXT PRIMARY KEY,count INTEGER DEFAULT 0,last REAL);
     CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,taken REAL,width INTEGER,height INTEGER);
+    CREATE TABLE IF NOT EXISTS ocr_entries(id TEXT PRIMARY KEY);
+    CREATE TRIGGER IF NOT EXISTS entries_ocr_delete AFTER DELETE ON entries BEGIN
+      DELETE FROM ocr_entries WHERE id=old.id;
+    END;
     CREATE TRIGGER IF NOT EXISTS entries_names_insert AFTER INSERT ON entries BEGIN
       INSERT OR REPLACE INTO name_fts(rowid,id,title,path) VALUES(new.rowid,new.id,new.title,new.path);
     END;
@@ -121,6 +129,7 @@ function createStore(directory, { machine = os.hostname() + '|' + os.homedir() }
           'driveRoots',
           'contentRoots',
           'trustedRoots',
+          'ocr',
         ].some((key) => JSON.stringify(previous[key]) !== JSON.stringify(value[key]))
       )
         purgeContent(db, { ...defaults, ...value });

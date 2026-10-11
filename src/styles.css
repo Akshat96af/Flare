@@ -468,6 +468,7 @@ kbd {
   overflow-wrap: anywhere;
 }
 .settings-panel,
+.read-text-panel,
 .tools-panel,
 .plan-panel,
 .history-panel,
@@ -478,6 +479,89 @@ kbd {
   max-height: var(--content-height, 560px);
   overflow: auto;
   scrollbar-width: thin;
+}
+.file-action-tray {
+  padding: 16px 21px 18px;
+  border-top: 1px solid var(--line);
+  animation: contentIn 260ms var(--motion-out);
+}
+.file-action-tray .section-heading {
+  margin-bottom: 12px;
+}
+.file-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.file-action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 39px;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--raised);
+}
+.file-action span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.file-action svg {
+  color: var(--muted);
+}
+.file-action:hover {
+  background: var(--hover);
+}
+.read-text-name {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  margin-bottom: 16px;
+}
+.read-text-output {
+  width: 100%;
+  min-height: 180px;
+  height: 220px;
+  padding: 12px;
+  resize: vertical;
+  line-height: 1.65;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.read-text-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 160px;
+  color: var(--muted);
+}
+.offline-voice-setup {
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.offline-voice-setup h3 {
+  margin: 0;
+}
+.voice-recording { display: block; width: 100%; max-width: 330px; height: 38px; margin: 16px auto 0; }
+.voice-input-level { width: 180px; max-width: 100%; margin: auto; }
+.voice-input-level meter { width: 100%; height: 6px; display: block; margin: 12px 0; }
+@media (max-width: 560px) {
+  .file-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .file-action-tray {
+    padding-inline: 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .file-action-tray {
+    animation: none;
+  }
 }
 .section-heading {
   display: flex;

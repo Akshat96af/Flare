@@ -25,6 +25,7 @@ export default function Voice({
     [devices, setDevices] = useState<MediaDeviceInfo[]>([]),
     [signal, setSignal] = useState(''),
     [engine, setEngine] = useState('');
+  const [recording, setRecording] = useState(''), [level, setLevel] = useState(0);
   const bars = useRef<HTMLDivElement>(null),
     stop = useRef<() => void>(() => {}),
     cancel = useRef<() => void>(() => {}),
@@ -34,6 +35,8 @@ export default function Voice({
     setError('');
     setText('');
     setSignal('');
+    setRecording(''); setLevel(0);
+    let recordingUrl = '', lastLevelUpdate = 0;
     let active = true,
       stream: MediaStream | undefined,
       context: AudioContext | undefined,
@@ -63,7 +66,13 @@ export default function Voice({
       }
       recorded = new Promise<void>((resolve) => {
         if (rec?.state === 'recording') {
-          rec.onstop = () => resolve();
+          rec.onstop = () => {
+            if (active && chunks.length) {
+              recordingUrl = URL.createObjectURL(new Blob(chunks, { type: rec?.mimeType || 'audio/webm' }));
+              setRecording(recordingUrl);
+            }
+            resolve();
+          };
           rec.stop();
         } else resolve();
       });
@@ -129,12 +138,12 @@ export default function Voice({
         if (!active) return;
         if (!transcript?.trim())
           throw new Error(
-            'Windows could not understand this recording. Try Whisper online in Intelligence settings.',
+            'No clear speech detected. Listen to the recording or choose Offline Whisper in Voice settings.',
           );
         await finish(transcript);
       } catch (error) {
         if (!active) return;
-        if (settings.ai.speechCloud) {
+        if (settings.speechEngine !== 'whisper' && settings.ai.speechCloud) {
           uploading = false;
           await cloud();
         } else fail((error as Error).message);
@@ -172,11 +181,15 @@ export default function Voice({
     });
     (async () => {
       try {
-        const preferOnline = settings.ai.speechCloud && settings.ai.speechMode === 'online';
+        const preferOnline = settings.speechEngine !== 'whisper' && settings.ai.speechCloud && settings.ai.speechMode === 'online';
         const capability = preferOnline
           ? { available: false }
           : await bridge.call('voice-status').catch(() => ({ available: false }));
         if (!active) return;
+        if (settings.speechEngine === 'whisper' && !capability.available) {
+          fail('Offline Whisper is not installed. Select it in Flare Setup, or use Windows speech.');
+          return;
+        }
         if (stopping) {
           fail('Stopped before the microphone was ready. Try again.');
           return;
@@ -184,7 +197,7 @@ export default function Voice({
         mode = capability.available ? 'local' : 'cloud';
         setEngine(
           mode === 'local'
-            ? 'Windows speech'
+            ? settings.speechEngine === 'whisper' ? 'Offline Whisper' : 'Windows speech'
             : `${settings.ai.provider === 'gemini' ? 'Gemini' : settings.ai.provider === 'groq' ? 'Whisper' : 'OpenAI'} transcription`,
         );
         if (mode === 'cloud' && !settings.ai.speechCloud) {
@@ -253,6 +266,9 @@ export default function Voice({
           let sum = 0;
           waveform.forEach((x) => (sum += x * x));
           const rms = Math.sqrt(sum / waveform.length);
+          if (Date.now() - lastLevelUpdate > 150) {
+            setLevel(Math.min(1, rms * 8)); lastLevelUpdate = Date.now();
+          }
           if (ready && rms > 0.003) {
             lastSound = Date.now();
             heard = true;
@@ -311,6 +327,7 @@ export default function Voice({
       active = false;
       clearTimeout(preparationTimer);
       removeReady();
+      if (recordingUrl) URL.revokeObjectURL(recordingUrl);
       stopRecording();
       bridge.call('voice-cancel').catch(() => {});
     };
@@ -394,9 +411,7 @@ export default function Voice({
                 : "Let's try that again."}
       </h2>
       {state === 'listening' && (
-        <p className="voice-signal" role="status">
-          {signal || 'Waiting for speech'}
-        </p>
+        <div className="voice-input-level"><meter aria-label="Microphone input level" min={0} max={1} value={level} /><p className="voice-signal" role="status">{signal || 'Waiting for speech'}</p></div>
       )}
       {state === 'review' ? (
         <form
@@ -445,6 +460,7 @@ export default function Voice({
           <Settings2 size={14} /> Voice settings
         </button>
       )}
+      {recording && ['error', 'review'].includes(state) && <audio className="voice-recording" aria-label="Listen to your recording" controls preload="metadata" src={recording} />}
     </section>
   );
 }

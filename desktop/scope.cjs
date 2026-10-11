@@ -42,6 +42,11 @@ function purgeContent(db, settings) {
       "SELECT rowid,id,path FROM entries WHERE kind='file' AND (content!='' OR id IN (SELECT id FROM photos) OR rowid IN (SELECT rowid FROM content_fts))",
     )
     .all()) {
+    if (!settings.ocr && db.prepare('SELECT id FROM ocr_entries WHERE id=?').get(item.id)) {
+      db.prepare("UPDATE entries SET content='' WHERE id=?").run(item.id);
+      db.prepare('DELETE FROM content_fts WHERE rowid=?').run(item.rowid);
+      db.prepare('DELETE FROM ocr_entries WHERE id=?').run(item.id);
+    }
     if (
       settings.content &&
       contentAllowed(item.path, settings) &&
@@ -51,6 +56,7 @@ function purgeContent(db, settings) {
     db.prepare("UPDATE entries SET content='' WHERE id=? AND content!=''").run(item.id);
     db.prepare('DELETE FROM content_fts WHERE rowid=?').run(item.rowid);
     db.prepare('DELETE FROM photos WHERE id=?').run(item.id);
+    db.prepare('DELETE FROM ocr_entries WHERE id=?').run(item.id);
   }
 }
 module.exports = { within, excluded, searchRoots, contentAllowed, assistantAllowed, purgeContent };

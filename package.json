@@ -24,14 +24,16 @@
     "test:launch-motion": "node scripts/launcher-motion-smoke.cjs",
     "test:shadow": "node scripts/shadow-smoke.cjs",
     "assets": "node scripts/assets.cjs",
+    "payloads": "node scripts/setup-payloads.cjs",
     "notices": "node scripts/notices.cjs",
     "format": "prettier --write src desktop scripts tests package.json tsconfig.json vite.config.ts index.html",
     "format:check": "prettier --check src desktop scripts tests package.json tsconfig.json vite.config.ts index.html",
-    "package": "npm run assets && npm run notices && npm run build && electron-builder --win nsis zip",
-    "package:dir": "npm run assets && npm run notices && npm run build && electron-builder --win --dir"
+    "package": "npm run assets && npm run payloads && npm run notices && npm run build && electron-builder --win nsis zip",
+    "package:dir": "npm run assets && npm run payloads && npm run notices && npm run build && electron-builder --win --dir"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.100",
+    "@tesseract.js-data/eng": "1.0.0",
     "exif-reader": "^2.0.3",
     "fast-xml-parser": "^5.0.0",
     "fastest-levenshtein": "1.0.16",
@@ -45,6 +47,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "sharp": "^0.35.5",
+    "tesseract.js": "7.0.0",
     "yauzl": "^3.2.0"
   },
   "devDependencies": {
@@ -71,6 +74,8 @@
       "node_modules/sharp/**",
       "node_modules/@img/**",
       "node_modules/koffi/**"
+      ,"node_modules/tesseract.js/**",
+      "node_modules/tesseract.js-core/**"
     ],
     "directories": {
       "output": "release"
@@ -78,6 +83,7 @@
     "files": [
       "dist/**",
       "desktop/**",
+      "!node_modules/@tesseract.js-data/**",
       "package.json",
       "LICENSE",
       "THIRD_PARTY_NOTICES.md",
@@ -94,7 +100,8 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "include": "scripts/installer.nsh"
     },
     "artifactName": "Flare-${version}-${arch}.${ext}"
   }

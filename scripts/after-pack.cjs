@@ -4,6 +4,11 @@ module.exports = async (context) => {
   const release = path.resolve(__dirname, '../release'),
     directory = path.resolve(context.appOutDir);
   if (!directory.startsWith(release + path.sep)) throw new Error('Unexpected output directory.');
+  await fs.cp(
+    path.resolve(__dirname, '../Files/private/setup-payload'),
+    path.join(directory, 'resources/optional'),
+    { recursive: true },
+  );
   await fs.writeFile(
     path.join(directory, 'Flare Portable.cmd'),
     '@echo off\r\nstart "" "%~dp0Flare.exe" --portable\r\n',

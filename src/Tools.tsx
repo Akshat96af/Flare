@@ -11,6 +11,7 @@ import {
   X,
   LoaderCircle,
   Check,
+  Scaling,
 } from 'lucide-react';
 import { bridge, basename, fileSize } from './bridge';
 import type { Operation } from './types';
@@ -18,6 +19,7 @@ import { usePanelMotion } from './usePanelMotion';
 const tools = [
   ['image', 'Convert images', Image],
   ['compress', 'Compress images', Archive],
+  ['resize', 'Resize images', Scaling],
   ['images-pdf', 'Images to PDF', FileText],
   ['pdf-images', 'PDF to images', Image],
   ['merge-pdf', 'Merge PDFs', Combine],
@@ -118,19 +120,22 @@ export default function Tools({
   onClose,
   autoConvert = false,
   initialMode = 'type',
+  initialFiles = [],
 }: {
   initial?: string;
   onPlan: (p: Operation) => void;
   onClose: () => void;
   autoConvert?: boolean;
   initialMode?: string;
+  initialFiles?: string[];
 }) {
   const [tool, setTool] = useState(initial || ''),
-    [files, setFiles] = useState<string[]>([]),
+    [files, setFiles] = useState<string[]>(initialFiles),
     [destination, setDestination] = useState(''),
     [format, setFormat] = useState('webp'),
     [quality, setQuality] = useState(82),
     [target, setTarget] = useState(0),
+    [width, setWidth] = useState(1280),
     [pages, setPages] = useState('1'),
     [mode, setMode] = useState(initialMode === 'month' ? 'month' : 'type'),
     [busy, setBusy] = useState(false),
@@ -179,6 +184,7 @@ export default function Tools({
         folder: files[0],
         format,
         quality,
+        width,
         targetKB: target,
         pages: pages.split(',').map((x) => Number(x.trim())),
         mode,
@@ -236,7 +242,7 @@ export default function Tools({
               choose(
                 folderTool
                   ? 'folder'
-                  : ['image', 'compress', 'images-pdf'].includes(tool)
+                  : ['image', 'compress', 'resize', 'images-pdf'].includes(tool)
                     ? 'images'
                     : 'pdf',
               )
@@ -273,7 +279,21 @@ export default function Tools({
               </button>
             </label>
           )}
-          {['image', 'compress'].includes(tool) && (
+          {tool === 'resize' && (
+            <label className="field-label">
+              Maximum width (pixels)
+              <input
+                aria-label="Image width"
+                type="number"
+                min="16"
+                max="8000"
+                step="1"
+                value={width}
+                onChange={(event) => setWidth(Number(event.target.value))}
+              />
+            </label>
+          )}
+          {['image', 'compress', 'resize'].includes(tool) && (
             <>
               <div className="form-grid">
                 <label className="field-label">

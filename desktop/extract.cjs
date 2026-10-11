@@ -134,6 +134,13 @@ async function extract(file, size, metadata = {}) {
         zip.readEntry();
       });
     });
+  if (metadata.ocr && require('./file-actions.cjs').ocrImages.has(ext)) {
+    const result = await require('./ocr.cjs').readOcr(file, size, {
+      recognizer: metadata.recognizer,
+    });
+    metadata.truncated = result.truncated;
+    return result.text;
+  }
   return '';
 }
 module.exports = { extract, textExtensions, pdfModule };

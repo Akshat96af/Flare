@@ -34,10 +34,13 @@ async function pdfImages(file, pages = [1], scale = 1.5) {
     await loading.destroy();
   }
 }
-async function imageBuffer(file, format, quality = 82, targetKB = 0) {
+async function imageBuffer(file, format, quality = 82, targetKB = 0, width = 0) {
   if (!formats.includes(format)) throw new Error('Unsupported output format.');
   const pipeline = (q) =>
-    sharp(file, { limitInputPixels: 50000000 }).rotate().toFormat(format, { quality: q });
+    sharp(file, { limitInputPixels: 50000000 })
+      .rotate()
+      .resize(width ? { width, withoutEnlargement: true } : undefined)
+      .toFormat(format, { quality: q });
   let buffer = await pipeline(quality).toBuffer();
   if (targetKB > 0 && ['jpeg', 'webp', 'avif'].includes(format)) {
     for (let q = quality - 10; buffer.length > targetKB * 1024 && q >= 10; q -= 10)
@@ -49,8 +52,14 @@ async function render(item, plan) {
   const options = plan.options,
     inputs = plan.inputs;
   let buffer;
-  if (['image', 'compress'].includes(options.tool))
-    buffer = await imageBuffer(item.from, options.format, options.quality, options.targetKB);
+  if (['image', 'compress', 'resize'].includes(options.tool))
+    buffer = await imageBuffer(
+      item.from,
+      options.format,
+      options.quality,
+      options.targetKB,
+      options.tool === 'resize' ? options.width : 0,
+    );
   else if (options.tool === 'images-pdf') {
     const pdf = await PDFDocument.create();
     for (const file of inputs) {
@@ -88,6 +97,7 @@ async function planConversion(operations, files, destination, options) {
     ![
       'image',
       'compress',
+      'resize',
       'images-pdf',
       'merge-pdf',
       'split-pdf',
@@ -101,8 +111,13 @@ async function planConversion(operations, files, destination, options) {
     quality: Math.max(10, Math.min(100, Number(options.quality) || 82)),
     targetKB: Math.max(0, Math.min(100000, Number(options.targetKB) || 0)),
   };
-  if (['image', 'compress'].includes(options.tool) && !formats.includes(options.format))
+  if (['image', 'compress', 'resize'].includes(options.tool) && !formats.includes(options.format))
     throw new Error('Choose a supported image format.');
+  if (
+    options.tool === 'resize' &&
+    (!Number.isInteger(options.width) || options.width < 16 || options.width > 8000)
+  )
+    throw new Error('Choose an image width between 16 and 8000 pixels.');
   if (options.tool === 'extract-pdf') {
     if (
       !Array.isArray(options.pages) ||
@@ -141,7 +156,7 @@ async function planConversion(operations, files, destination, options) {
         from: file,
         to: path.join(
           destination,
-          `${base}-flare-${stamp}-${i + 1}.${['image', 'compress'].includes(options.tool) ? (options.format === 'jpeg' ? 'jpg' : options.format) : 'pdf'}`,
+          `${base}-flare-${stamp}-${i + 1}.${['image', 'compress', 'resize'].includes(options.tool) ? (options.format === 'jpeg' ? 'jpg' : options.format) : 'pdf'}`,
         ),
         size: stat.size,
         modified: stat.mtimeMs,

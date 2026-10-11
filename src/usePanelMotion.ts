@@ -23,7 +23,7 @@ export function usePanelMotion(root: RefObject<HTMLElement | null>, view: string
     if (motion.matches) return;
     const surface =
       element.querySelector<HTMLElement>(
-        ':scope > .settings-panel, :scope > .tools-panel, :scope > .voice-panel, :scope > .share-panel, :scope > .history-panel, :scope > .plan-panel, :scope > .search-content, :scope > .settings-content',
+        ':scope > .settings-panel, :scope > .tools-panel, :scope > .voice-panel, :scope > .share-panel, :scope > .history-panel, :scope > .plan-panel, :scope > .read-text-panel, :scope > .search-content, :scope > .settings-content',
       ) || (element.matches('.tools-panel') ? element : null);
     if (!surface) return;
     if (performance.now() < skipUntil.current) return;

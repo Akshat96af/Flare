@@ -30,6 +30,7 @@ const { openService, googleFallbackTarget } = require('./services.cjs');
 const { resolveMusic, openTrack } = require('./music.cjs');
 const { randomUUID } = require('node:crypto');
 const { FilePermissions } = require('./permissions.cjs');
+const { OfflineWhisper } = require('./offline-whisper.cjs');
 const { searchRoots, within, excluded } = require('./scope.cjs');
 const tracks = new Map();
 const external = {
@@ -69,6 +70,9 @@ let win,
   aiRequest,
   sharing,
   permissions,
+  offlineVoice,
+  fileRequest,
+  ocrWorker,
   driveTimer,
   openingTimer,
   activationId = 0,
@@ -160,6 +164,7 @@ function hideLauncher() {
   send('hold', { progress: 0 });
   stopVoice(true);
   aiRequest?.abort();
+  fileRequest?.abort();
   send('dismiss', {});
   win.hide();
 }
@@ -175,6 +180,13 @@ async function localVoice(bytes) {
   stopVoice(true);
   const controller = new AbortController();
   voiceRequest = controller;
+  if (store.settings().speechEngine === 'whisper') {
+    try {
+      return await offlineVoice.transcribe(bytes, store.settings().whisperModel, controller.signal);
+    } finally {
+      if (voiceRequest === controller) voiceRequest = null;
+    }
+  }
   const directory = await fs.mkdtemp(path.join(app.getPath('temp'), 'flare-speech-'));
   const file = path.join(directory, 'recording.wav');
   try {
@@ -311,6 +323,54 @@ async function preview(id) {
     result.text = (await require('./extract.cjs').extract(file, stat.size)).slice(0, 14000);
   }
   return result;
+}
+async function readFileText(id) {
+  const file = await approvedFile(id);
+  fileRequest?.abort();
+  const controller = new AbortController();
+  fileRequest = controller;
+  const generation = permissions.generation;
+  try {
+    const checked = await permissions.request(file);
+    controller.signal.throwIfAborted();
+    if (generation !== permissions.generation) throw new Error('File access changed. Try again.');
+    const result = await new Promise((resolve, reject) => {
+      const worker = new Worker(path.join(__dirname, 'ocr-worker.cjs'), {
+        workerData: { file: checked.file, size: checked.stat.size },
+      });
+      ocrWorker = worker;
+      let settled = false;
+      const finish = (error, result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        controller.signal.removeEventListener('abort', abort);
+        if (ocrWorker === worker) ocrWorker = null;
+        worker.terminate();
+        error ? reject(error) : resolve(result);
+      };
+      const abort = () => finish(new Error('Text reading cancelled.'));
+      const timer = setTimeout(
+        () => finish(new Error('Text reading took too long. Try a smaller file.')),
+        120000,
+      );
+      controller.signal.addEventListener('abort', abort, { once: true });
+      worker.on('message', (value) => {
+        if (value.progress) send('ocr-progress', { id, ...value.progress });
+        else finish(value.error ? new Error(value.error) : null, value.result);
+      });
+      worker.on('error', (error) => finish(error));
+      worker.on('exit', () => {
+        if (!settled) finish(new Error('Text reading stopped.'));
+      });
+    });
+    controller.signal.throwIfAborted();
+    if (generation !== permissions.generation)
+      throw new Error('File access changed. Nothing was saved.');
+    return { id, name: path.basename(file), ...result };
+  } finally {
+    if (fileRequest === controller) fileRequest = null;
+  }
 }
 async function query(q, kind) {
   if (typeof q !== 'string' || q.length > 500) throw new Error('Search is too long.');
@@ -452,11 +512,22 @@ async function saveSettings(patch) {
     'confirmConversions',
     'glass',
     'allDrives',
+    'ocr',
+    'smartActions',
   ])
     if (patch[key] !== undefined) {
       if (typeof patch[key] !== 'boolean') throw new Error('Invalid setting.');
       next[key] = patch[key];
     }
+  if (patch.speechEngine !== undefined) {
+    if (!['windows', 'whisper'].includes(patch.speechEngine))
+      throw new Error('Invalid voice engine.');
+    next.speechEngine = patch.speechEngine;
+  }
+  if (patch.whisperModel !== undefined) {
+    offlineVoice.model(patch.whisperModel);
+    next.whisperModel = patch.whisperModel;
+  }
   if (patch.shortcut !== undefined) {
     if (
       typeof patch.shortcut !== 'string' ||
@@ -510,11 +581,13 @@ async function saveSettings(patch) {
     'allDrives',
     'contentRoots',
     'trustedRoots',
+    'ocr',
   ].some((key) => JSON.stringify(next[key]) !== JSON.stringify(current[key]));
   if (scopeChanged) {
     await search.stop();
     permissions.clear();
     aiRequest?.abort();
+    fileRequest?.abort();
     search.nativeCache.clear();
   }
   store.saveSettings(next);
@@ -553,6 +626,7 @@ async function refreshDrives() {
   await search.stop();
   permissions.clear();
   aiRequest?.abort();
+  fileRequest?.abort();
   search.nativeCache.clear();
   store.saveSettings({
     ...current,
@@ -643,7 +717,12 @@ async function summarize(id) {
     controller.signal.throwIfAborted();
     if (checked.stat.size > 12 * 1024 * 1024) throw new Error('Choose a document below 12 MB.');
     const metadata = {};
-    const text = await require('./extract.cjs').extract(checked.file, checked.stat.size, metadata);
+    let text = await require('./extract.cjs').extract(checked.file, checked.stat.size, metadata);
+    if (!text.trim() && path.extname(file).toLowerCase() === '.pdf') {
+      const result = await readFileText(id);
+      text = result.text;
+      metadata.truncated = result.truncated;
+    }
     controller.signal.throwIfAborted();
     if (!text.trim())
       throw new Error('No readable text found. Scanned PDFs need OCR before summarizing.');
@@ -753,6 +832,16 @@ async function dispatch(method, data = {}) {
       return grantFolder(data.folder, data.level);
     case 'document-summary':
       return summarize(data.id);
+    case 'file-actions': {
+      const file = await approvedFile(data.id);
+      await permissions.validate(file);
+      return require('./file-actions.cjs').fileActions(file);
+    }
+    case 'file-ocr':
+      return readFileText(data.id);
+    case 'file-ocr-cancel':
+      fileRequest?.abort();
+      return true;
     case 'document-find': {
       const text = require('./commands.cjs').validateIntent({
         kind: 'document',
@@ -980,7 +1069,10 @@ async function dispatch(method, data = {}) {
         return operations.planFolder(data.folder, data.tool, data.mode);
       }
       const files = [];
-      for (const file of data.files || []) files.push(await approvedFile(file));
+      for (const file of data.files || []) {
+        const approved = await approvedFile(file);
+        files.push((await permissions.request(approved)).file);
+      }
       if (!granted.has(data.destination)) throw new Error('Choose an output folder first.');
       return require('./convert.cjs').planConversion(operations, files, data.destination, data);
     }
@@ -1033,8 +1125,27 @@ async function dispatch(method, data = {}) {
       return localVoice(data.bytes);
     case 'voice-start':
       throw new Error('Record microphone audio before recognition.');
-    case 'voice-status':
+    case 'offline-voice-info':
+      return offlineVoice.info();
+    case 'ocr-info':
+      return { available: await require('./ocr.cjs').available() };
+    case 'offline-voice-install':
+      return offlineVoice.install(data.model, data.confirm);
+    case 'offline-voice-cancel':
+      offlineVoice.cancel();
+      return true;
+    case 'voice-status': {
+      if (store.settings().speechEngine === 'whisper') {
+        const info = await offlineVoice.info();
+        return {
+          available: info.models.some(
+            (model) => model.id === store.settings().whisperModel && model.ready,
+          ),
+          engine: 'whisper',
+        };
+      }
       return powershell('speech-capabilities');
+    }
     case 'voice-stop':
       stopVoice();
       return true;
@@ -1088,6 +1199,29 @@ app
     store = createStore(app.getPath('userData'));
     search = new Search(store, send);
     permissions = new FilePermissions(store, (options) => dialog.showMessageBox(win, options));
+    offlineVoice = new OfflineWhisper(
+      store.directory,
+      send,
+      app.isPackaged ? path.join(process.resourcesPath, 'optional/voice') : path.join(__dirname, '../Files/private/setup-payload/voice'),
+    );
+    if (app.isPackaged) {
+      try {
+        const choices = await fs.readFile(path.join(process.resourcesPath, 'optional/installed.json'), 'utf8');
+        const selected = JSON.parse(choices);
+        if (store.get('setup-components-applied', '') !== choices) {
+        store.saveSettings({
+          ...store.settings(),
+          smartActions: selected.actions === true,
+          ocr: selected.ocr === true,
+          speechEngine: selected.voice === true ? 'whisper' : 'windows',
+          whisperModel: selected.model === 'tiny.en' ? 'tiny.en' : 'base.en',
+        });
+        store.set('setup-components-applied', choices);
+        }
+      } catch {
+        /* Portable builds keep optional features off until explicitly enabled. */
+      }
+    }
     operations = new Operations(store, send);
     sharing = new QuickShare((status) => {
       send('share', { active: status.active, downloads: status.downloads });
@@ -1215,6 +1349,9 @@ app
     app.on('before-quit', () => {
       quitting = true;
       stopVoice(true);
+      fileRequest?.abort();
+      offlineVoice?.cancel();
+      ocrWorker?.terminate();
       aiRequest?.abort();
       sharing.stop();
       search.close();
