@@ -51,15 +51,27 @@ const defaults = {
 function createStore(directory, { machine = os.hostname() + '|' + os.homedir() } = {}) {
   fs.mkdirSync(directory, { recursive: true });
   const db = new DatabaseSync(path.join(directory, 'flare.sqlite'));
-  db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
+  db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA recursive_triggers=ON;
     CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS entries(id TEXT PRIMARY KEY,title TEXT NOT NULL,path TEXT NOT NULL,kind TEXT NOT NULL,detail TEXT,modified REAL,size REAL,content TEXT DEFAULT '');
     CREATE INDEX IF NOT EXISTS entries_kind ON entries(kind);
+    CREATE INDEX IF NOT EXISTS entries_path ON entries(path COLLATE NOCASE);
     CREATE VIRTUAL TABLE IF NOT EXISTS content_fts USING fts5(id UNINDEXED,title,content);
     CREATE VIRTUAL TABLE IF NOT EXISTS name_fts USING fts5(id UNINDEXED,title,path);
     CREATE TABLE IF NOT EXISTS usage(id TEXT PRIMARY KEY,count INTEGER DEFAULT 0,last REAL);
     CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,taken REAL,width INTEGER,height INTEGER);
+    CREATE TRIGGER IF NOT EXISTS entries_names_insert AFTER INSERT ON entries BEGIN
+      INSERT OR REPLACE INTO name_fts(rowid,id,title,path) VALUES(new.rowid,new.id,new.title,new.path);
+    END;
+    CREATE TRIGGER IF NOT EXISTS entries_names_update AFTER UPDATE ON entries BEGIN
+      INSERT OR REPLACE INTO name_fts(rowid,id,title,path) VALUES(new.rowid,new.id,new.title,new.path);
+    END;
+    CREATE TRIGGER IF NOT EXISTS entries_names_delete AFTER DELETE ON entries BEGIN
+      DELETE FROM name_fts WHERE rowid=old.rowid;
+      DELETE FROM content_fts WHERE rowid=old.rowid;
+      DELETE FROM photos WHERE id=old.id;
+    END;
   `);
   const get = (key, fallback) => {
     const row = db.prepare('SELECT value FROM preferences WHERE key=?').get(key);
@@ -81,11 +93,11 @@ function createStore(directory, { machine = os.hostname() + '|' + os.homedir() }
     );
     set('permission-machine', machine);
   }
-  if (get('name-index-version', 0) !== 1) {
+  if (get('name-index-version', 0) !== 2) {
     db.exec(
-      'DELETE FROM name_fts; INSERT INTO name_fts(id,title,path) SELECT id,title,path FROM entries',
+      "BEGIN; DELETE FROM name_fts; INSERT INTO name_fts(rowid,id,title,path) SELECT rowid,id,title,path FROM entries; DELETE FROM content_fts; INSERT INTO content_fts(rowid,id,title,content) SELECT rowid,id,title,content FROM entries WHERE content!=''; COMMIT;",
     );
-    set('name-index-version', 1);
+    set('name-index-version', 2);
   }
   return {
     db,

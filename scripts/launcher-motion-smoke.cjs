@@ -56,16 +56,15 @@ const fs = require('node:fs/promises');
         requestAnimationFrame(sample);
       });
     });
-    const tap = () =>
-      instance.evaluate(() => {
-        const key = require('koffi')
-          .load('user32.dll')
-          .func('void __stdcall keybd_event(uint8 key,uint8 scan,uint32 flags,uintptr extra)');
-        key(0x12, 0, 0, 0);
-        key(0x20, 0, 0, 0);
-        key(0x20, 0, 2, 0);
-        key(0x12, 0, 2, 0);
-      });
+    const key = require('koffi')
+      .load('user32.dll')
+      .func('void __stdcall keybd_event(uint8 key,uint8 scan,uint32 flags,uintptr extra)');
+    const tap = () => {
+      key(0x12, 0, 0, 0);
+      key(0x20, 0, 0, 0);
+      key(0x20, 0, 2, 0);
+      key(0x12, 0, 2, 0);
+    };
     for (let i = 0; i < 3; i++) {
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
       await page.getByRole('heading', { name: 'Settings', exact: true }).waitFor();

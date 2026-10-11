@@ -12,7 +12,10 @@
   --accent: #89dcf3;
   --accent-ink: #10272f;
   --border: rgba(255, 255, 255, 0.15);
-  --shadow: 0 30px 80px rgba(0, 0, 0, 0.34), 0 8px 25px rgba(0, 0, 0, 0.16);
+  --shadow-ambient: rgba(0, 0, 0, 0.32);
+  --shadow-contact: rgba(0, 0, 0, 0.22);
+  /* Fade to transparent inside the native window's 22px side gutters. */
+  --shadow: 0 10px 22px -8px var(--shadow-ambient), 0 2px 6px -2px var(--shadow-contact);
   font-size: 13px;
   letter-spacing: 0;
   font-synthesis: none;
@@ -30,7 +33,8 @@
   --accent: #126780;
   --accent-ink: #fff;
   --border: rgba(0, 0, 0, 0.12);
-  --shadow: 0 28px 80px rgba(30, 40, 50, 0.2), 0 6px 20px rgba(30, 40, 50, 0.1);
+  --shadow-ambient: rgba(30, 40, 50, 0.2);
+  --shadow-contact: rgba(30, 40, 50, 0.14);
 }
 * {
   box-sizing: border-box;
@@ -1243,6 +1247,9 @@ select {
   --faint: #626975;
 }
 @media (max-width: 560px) {
+  :root {
+    --shadow: 0 7px 14px -6px var(--shadow-ambient), 0 2px 4px -2px var(--shadow-contact);
+  }
   .workspace {
     padding: 16px 10px 24px;
   }

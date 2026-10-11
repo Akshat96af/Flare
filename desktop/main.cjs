@@ -122,6 +122,7 @@ function show(mode = 'search') {
     if (ticket !== activationId || win.isDestroyed()) return;
     win.show();
     win.focus();
+    send('shown', { animate: false });
   }, 1200);
 }
 function register(shortcut) {
@@ -271,8 +272,8 @@ async function pick(kind) {
   return files;
 }
 async function preview(id) {
-  const file = await approvedFile(id),
-    stat = await fs.stat(file);
+  const file = await approvedFile(id);
+  const { stat } = await permissions.validate(file);
   if (!stat.isFile() || stat.size > 100 * 1024 * 1024)
     throw new Error('This preview is unavailable.');
   const result = {
@@ -286,7 +287,6 @@ async function preview(id) {
     type: path.extname(file).slice(1).toUpperCase(),
   };
   if (!result.contentAllowed) return result;
-  await permissions.validate(file);
   if (/\.(jpg|jpeg|png|webp|avif|gif|tiff|bmp)$/i.test(file)) {
     const sharp = require('sharp'),
       bytes = await fs.readFile(file),
@@ -373,6 +373,16 @@ async function query(q, kind) {
   );
 }
 async function executeIntent(intent) {
+  if (intent.kind === 'content-search') {
+    const [folder] = await pick('folder');
+    if (!folder) return { intent: { kind: 'answer', text: 'Content search cancelled.' } };
+    const settings = await grantFolder(folder, 'content');
+    if (!require('./scope.cjs').contentAllowed(folder, settings))
+      return {
+        intent: { kind: 'answer', text: 'Folder access was not granted. Names remain searchable.' },
+      };
+    return { intent: { kind: 'search', query: intent.query } };
+  }
   if (intent.kind === 'media') {
     const result = await powershell('media', { action: intent.action, service: intent.service });
     if (!result.ok) throw new Error(result.message || 'No controllable music player is active.');
@@ -602,6 +612,10 @@ async function grantFolder(folder, level) {
   aiRequest?.abort();
   const next = {
     ...settings,
+    roots: searchRoots(settings).some((root) => within(real, root))
+      ? settings.roots
+      : [...new Set([...settings.roots, real])],
+    setup: true,
     contentRoots: settings.contentRoots.filter((root) =>
       level === 'names' ? !within(root, real) : root !== real,
     ),
@@ -628,7 +642,8 @@ async function summarize(id) {
     const checked = await permissions.request(file, selected.provider !== 'local');
     controller.signal.throwIfAborted();
     if (checked.stat.size > 12 * 1024 * 1024) throw new Error('Choose a document below 12 MB.');
-    const text = await require('./extract.cjs').extract(checked.file, checked.stat.size);
+    const metadata = {};
+    const text = await require('./extract.cjs').extract(checked.file, checked.stat.size, metadata);
     controller.signal.throwIfAborted();
     if (!text.trim())
       throw new Error('No readable text found. Scanned PDFs need OCR before summarizing.');
@@ -641,7 +656,7 @@ async function summarize(id) {
         document: {
           name: path.basename(file),
           text: text.slice(0, 48000),
-          truncated: text.length > 48000,
+          truncated: !!metadata.truncated || text.length > 48000,
         },
       },
     );
@@ -802,6 +817,7 @@ async function dispatch(method, data = {}) {
     case 'pick':
       return pick(data.kind);
     case 'drives': {
+      await refreshDrives();
       const drives = await powershell('drives');
       for (const d of drives) granted.add(d.path);
       return drives;
@@ -906,7 +922,17 @@ async function dispatch(method, data = {}) {
         const local = interpretLocal(data.query);
         if (
           local &&
-          ['music', 'service', 'launch', 'system', 'tool', 'document', 'media'].includes(local.kind)
+          [
+            'music',
+            'service',
+            'launch',
+            'system',
+            'tool',
+            'document',
+            'media',
+            'search',
+            'content-search',
+          ].includes(local.kind)
         )
           return local;
         return await ai.plan(data.query, settings, secret(settings.provider), controller.signal);

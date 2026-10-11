@@ -191,6 +191,11 @@ test('document summarization treats excerpts as data and cannot return executabl
 });
 
 test('assistant shortcuts cover summaries, browser launch and explicit playback control', () => {
+  assert.deepEqual(interpretLocal('find budget.pdf'), { kind: 'search', query: 'budget.pdf' });
+  assert.deepEqual(interpretLocal('search inside files for orchid'), {
+    kind: 'content-search',
+    query: 'orchid',
+  });
   assert.deepEqual(interpretLocal('summarise budget.pdf'), {
     kind: 'document',
     query: 'budget.pdf',
@@ -210,4 +215,22 @@ test('assistant shortcuts cover summaries, browser launch and explicit playback 
     action: 'resume',
     service: 'applemusic',
   });
+});
+
+test('filename FTS follows insert, replacement and deletion atomically by SQLite row ID', async () => {
+  const base = await fixture(),
+    store = createStore(path.join(base, 'data'));
+  const search = new Search(store, () => {});
+  try {
+    search.put({ id: 'app:fixture', title: 'Orchid', path: 'Fixture application', kind: 'app' });
+    assert.equal(search.query('orchid')[0].title, 'Orchid');
+    search.put({ id: 'app:fixture', title: 'Tulip', path: 'Updated application', kind: 'app' });
+    assert.equal(store.db.prepare('SELECT count(*) n FROM name_fts').get().n, 1);
+    assert.equal(search.query('orchid').length, 0);
+    assert.equal(search.query('tulip')[0].title, 'Tulip');
+    store.db.prepare('DELETE FROM entries WHERE id=?').run('app:fixture');
+    assert.equal(store.db.prepare('SELECT count(*) n FROM name_fts').get().n, 0);
+  } finally {
+    store.close();
+  }
 });

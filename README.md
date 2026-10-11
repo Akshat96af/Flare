@@ -27,7 +27,7 @@ Use `npm run desktop:dev` for live UI development. `npm run dev` is a browser pr
 
 - Tap `Alt+Space` to open; hold for 1 second for English voice. Silence-stop is the default; push-to-talk is available.
 - Search apps, files, folders, bookmarks, Windows settings, or calculations. Arrows/Enter navigate; `Ctrl+Space` previews; Escape immediately hides Flare from any panel and cancels microphone/AI input, not ongoing file operations.
-- Choose folders or connected drives in Settings before file indexing. Hidden/system files, reparse points, cloud-only files, credentials, and common caches are excluded.
+- Connected local drives are discovered automatically for filename and location indexing. Document contents require explicit folder access; hidden/system files, reparse points, cloud-only files, credentials, and common caches remain excluded. See [folder access and assistant commands](docs/FILE_ACCESS.md).
 - File tools provide image/PDF conversion, image compression, organization, and older-file review. Selected-file previews, durable history, and Undo protect changes. Balanced trust may skip the extra conversion-output review, never move/cleanup approval.
 - Clipboard history starts off. Opt-in retains at most 50 text items for up to 7 days, with clear/disable controls and supported sensitive-content markers.
 - Liquid-glass edges, pointer reflections, and elastic controls work in light/dark modes. Turn glass off in Settings; reduced-motion preferences are respected.
@@ -40,13 +40,13 @@ Examples: `open YouTube`, `volume max`, `brightness 50 percent`, `12 * (3 + 4)`,
 
 See [voice recording and Whisper setup](docs/VOICE_WHISPER.md) for the repaired microphone pipeline and Groq transcription option. AI answers now reveal progressively, with reduced-motion support.
 
-Connect Gemini, OpenRouter (free models), OpenAI, Anthropic, or local Ollama in Settings. API keys use Windows-backed Electron safeStorage and are never returned to the UI. Online interpretation shares command text, not indexed document contents. File tools still use locally selected files/folders.
+Connect Gemini, Groq (Whisper voice), OpenRouter (free models), OpenAI, Anthropic, or local Ollama in Settings. API keys use Windows-backed Electron safeStorage and are never returned to the UI. Ordinary interpretation shares command text, not indexed document contents. Selected-document summaries require file-level consent or an explicit assistant-folder grant before sending an excerpt online. File changes remain reviewable.
 
-When no local result matches, enabled Intelligence offers **Ask AI**. Answers are plain text; AI cannot see your indexed files or invent file changes. Checking a connection only validates model discovery, not generation quota or availability. Ordinary failed AI requests fall back to Google; the explicit Test response action keeps provider errors visible in Intelligence settings. Normal text requests retry HTTP 503 up to twice with bounded backoff; each attempt may count toward provider usage. Connection tests and speech uploads are not automatically retried. Cancellation stops pending retries.
+When no local result matches, enabled Intelligence offers **Ask AI**. Answers are plain text; ordinary interpretation cannot see indexed files or invent file changes. Explicit summaries can read only the permitted document and reject executable responses. Checking a connection only validates model discovery, not generation quota or availability. Ordinary failed AI requests fall back to Google; local file searches and denied document access do not. The explicit Test response action keeps provider errors visible in Intelligence settings. Normal text requests retry HTTP 503 up to twice with bounded backoff; each attempt may count toward provider usage. Connection tests and speech uploads are not automatically retried. Cancellation stops pending retries.
 
 OpenRouter discovers compatible zero-price text models and offers **Automatic (free models)**. Paid model routes are blocked; free availability and rate limits still apply. See [free AI and music setup](docs/FREE_AI_AND_MUSIC.md). Basic commands tolerate conservative spelling corrections (`bightness 100`, `volum 50`, `opne youtube`) without an AI call. Music commands resolve catalogue links, prefer a registered player, and otherwise open the exact web track. Apple Music lookup needs no credentials; Spotify mapping is best-effort. After submission, unresolved music, missing apps, unsupported AI requests and provider failures fall back to Google with the original query unchanged. Nothing searches the web just from typing, and cancellation never triggers fallback. Opening a track does not guarantee autoplay or bypass a music subscription.
 
-ChatGPT/Claude/Gemini consumer subscriptions are not assumed to include API credits. Voice recognition can use Windows only, Windows with online fallback, or online transcription directly. Online modes are separately opt-in and send recorded audio to the selected OpenAI/Gemini provider. Speech models are independent of the Intelligence model, including Gemini 3.5 Transcribe and GPT-4o Transcribe/Mini. Local English recognition uses Windows speech; an English speech pack is required. Transcripts are reviewed before use. API availability and charges depend on the provider account.
+ChatGPT/Claude/Gemini consumer subscriptions are not assumed to include API credits. Voice recognition can use Windows only, Windows with online fallback, or online transcription directly. Online modes are separately opt-in and send recorded audio to the selected OpenAI/Gemini/Groq provider. Speech models are independent of the Intelligence model. Local English recognition uses Windows speech; an English speech pack is required. Transcripts are reviewed before Use command submits a finite action. API availability and charges depend on the provider account.
 
 Ollama setup links to the official installer, detects models, and offers an explicitly approved compact-model download with progress/cancel. Nothing is downloaded automatically.
 
@@ -71,6 +71,8 @@ npm run test:ui
 npm run test:features
 npm run test:ai-music
 npm run test:settings-motion
+npm run test:assistant
+npm run test:launch-motion
 npm run format:check
 npm run package
 ```

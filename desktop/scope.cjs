@@ -39,7 +39,7 @@ function assistantAllowed(file, settings) {
 function purgeContent(db, settings) {
   for (const item of db
     .prepare(
-      "SELECT id,path FROM entries WHERE kind='file' AND (content!='' OR id IN (SELECT id FROM photos) OR id IN (SELECT id FROM content_fts))",
+      "SELECT rowid,id,path FROM entries WHERE kind='file' AND (content!='' OR id IN (SELECT id FROM photos) OR rowid IN (SELECT rowid FROM content_fts))",
     )
     .all()) {
     if (
@@ -49,7 +49,7 @@ function purgeContent(db, settings) {
     )
       continue;
     db.prepare("UPDATE entries SET content='' WHERE id=? AND content!=''").run(item.id);
-    db.prepare('DELETE FROM content_fts WHERE id=?').run(item.id);
+    db.prepare('DELETE FROM content_fts WHERE rowid=?').run(item.rowid);
     db.prepare('DELETE FROM photos WHERE id=?').run(item.id);
   }
 }

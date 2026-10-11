@@ -294,7 +294,7 @@ export default function Settings({
         {page === 'search' && (
           <>
             <p className="panel-copy">
-              Choose what Flare can find. Everything stays on this computer.
+              Indexes stay local. Online summaries share only documents you allow.
             </p>
             <div className="index-status">
               <span className={'status-dot ' + (index.state === 'indexing' ? 'active' : '')} />
@@ -353,7 +353,6 @@ export default function Settings({
                     const drives = await bridge.call('drives');
                     onChange(
                       await bridge.call('settings', {
-                        roots: drives.map((x: any) => x.path),
                         allDrives: true,
                         setup: true,
                       }),

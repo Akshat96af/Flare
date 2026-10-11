@@ -126,10 +126,19 @@ export function useLauncherMotion(root: RefObject<HTMLElement | null>) {
       animations.forEach((animation) => animation.cancel());
       animations = [];
       element.dataset.launchMotion = 'idle';
+      element.style.opacity = '';
     };
-    const enter = () => {
+    const prepare = (event: Event) => {
       stop();
-      if (motion.matches) return;
+      if (!motion.matches && event instanceof CustomEvent && event.detail?.animate) {
+        element.style.opacity = '0';
+        element.dataset.launchMotion = 'preparing';
+      }
+    };
+    const enter = (event?: Event) => {
+      stop();
+      if (motion.matches || (event instanceof CustomEvent && event.detail?.animate === false))
+        return;
       element
         .getAnimations({ subtree: true })
         .filter((animation) => animation.id === 'flare-panel')
@@ -157,6 +166,7 @@ export function useLauncherMotion(root: RefObject<HTMLElement | null>) {
     element.addEventListener('pointerdown', settlePicker, true);
     element.addEventListener('focusin', settlePicker);
     window.addEventListener('flare:shown', enter);
+    window.addEventListener('flare:activate', prepare);
     window.addEventListener('flare:dismiss', stop);
     window.addEventListener('blur', stop);
     motion.addEventListener('change', stop);
@@ -165,6 +175,7 @@ export function useLauncherMotion(root: RefObject<HTMLElement | null>) {
       element.removeEventListener('pointerdown', settlePicker, true);
       element.removeEventListener('focusin', settlePicker);
       window.removeEventListener('flare:shown', enter);
+      window.removeEventListener('flare:activate', prepare);
       window.removeEventListener('flare:dismiss', stop);
       window.removeEventListener('blur', stop);
       motion.removeEventListener('change', stop);

@@ -129,7 +129,7 @@ export default function App() {
           setAiAnswer('');
           setSettingsPage('general');
         }
-        window.dispatchEvent(new Event('flare:activate'));
+        window.dispatchEvent(new CustomEvent('flare:activate', { detail: data }));
         input.current?.focus();
         if (data.ticket)
           requestAnimationFrame(() =>
@@ -145,7 +145,7 @@ export default function App() {
           );
       }),
       bridge.on('shown', (data) => {
-        if (data.animate) window.dispatchEvent(new Event('flare:shown'));
+        window.dispatchEvent(new CustomEvent('flare:shown', { detail: data }));
       }),
       bridge.on('dismiss', () => {
         sequence.current++;
@@ -368,12 +368,14 @@ export default function App() {
       const id = aiSequence.current;
       const found = await bridge.call('search', { query: intent.query, kind: 'all' });
       if (id !== aiSequence.current) return;
-      if (!found.length) {
-        await googleFallback(original, id);
-        return;
-      }
       setView('search');
       setQuery(intent.query);
+      if (!found.length)
+        setNotice(
+          index.state === 'indexing'
+            ? 'Still indexing your search locations.'
+            : 'Nothing found in your search locations.',
+        );
       if (intent.query === query)
         setNotice('Search unchanged. Check your search locations for missing files.');
     } else if (intent?.kind === 'answer') {

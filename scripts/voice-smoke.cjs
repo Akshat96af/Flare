@@ -44,6 +44,10 @@ const AxeBuilder = require('@axe-core/playwright').default;
           state.status++;
           return { available: true };
         }
+        if (method === 'open' && data.intent?.kind === 'system') {
+          state.command = data.intent;
+          return { message: 'Fixture system command accepted' };
+        }
         if (method === 'voice-recorded') {
           state.starts++;
           const bytes = Buffer.from(data.bytes);
@@ -293,6 +297,9 @@ const AxeBuilder = require('@axe-core/playwright').default;
     checks.push(
       'Groq setup saves namespaced chat models and uploads captured audio to Whisper Turbo',
     );
+    await page.getByRole('button', { name: 'Use command', exact: true }).click();
+    await expect.poll(() => instance.evaluate(() => global.voiceFixture.command?.value)).toBe(100);
+    checks.push('Reviewed voice transcript submits a validated command; hardware action is mocked');
     assert.deepEqual(errors, []);
     const report = {
       checks,

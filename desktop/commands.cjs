@@ -171,6 +171,13 @@ function parseLocal(input) {
     return { kind: 'tool', tool: 'organize', mode: /month|date/i.test(text) ? 'month' : 'type' };
   if (/^(?:find\s+)?(?:unused\s+files|cleanup|clean up)/i.test(text))
     return { kind: 'tool', tool: 'cleanup' };
+  const contentSearch = text.match(
+    /^(?:find|search)\s+(?:inside(?:\s+(?:files|documents))?|in (?:files|documents))\s+(?:for\s+)?(.+)$/i,
+  );
+  if (contentSearch) return validateIntent({ kind: 'content-search', query: contentSearch[1] });
+  const fileSearch = text.match(/^(?:find|search(?: for)?)\s+(.+)$/i);
+  if (fileSearch && !/^drives?\b/i.test(fileSearch[1]))
+    return validateIntent({ kind: 'search', query: fileSearch[1] });
   if (/^compress\b/i.test(text)) return { kind: 'tool', tool: 'compress' };
   if (/^convert\b.*\bpdf\b/i.test(text)) return { kind: 'tool', tool: 'images-pdf' };
   if (/^merge\b.*\bpdf/i.test(text)) return { kind: 'tool', tool: 'merge-pdf' };
@@ -188,13 +195,13 @@ function validateIntent(intent) {
     throw new Error('AI did not return a valid command.');
   if (intent.kind === 'fallback') return { kind: 'fallback' };
   if (
-    intent.kind === 'document' &&
+    ['document', 'content-search'].includes(intent.kind) &&
     typeof intent.query === 'string' &&
     intent.query.trim() &&
     intent.query.length <= 500 &&
     !/[\u0000-\u001f]/.test(intent.query)
   )
-    return { kind: 'document', query: intent.query.trim() };
+    return { kind: intent.kind, query: intent.query.trim() };
   if (
     intent.kind === 'media' &&
     ['play', 'pause', 'resume', 'stop', 'next', 'previous'].includes(intent.action) &&

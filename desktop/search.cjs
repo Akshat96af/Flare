@@ -75,8 +75,6 @@ class Search {
     this.store.db
       .prepare('INSERT OR REPLACE INTO entries(id,title,path,kind,detail) VALUES(?,?,?,?,?)')
       .run(item.id, item.title, item.path, item.kind, item.detail || '');
-    this.store.db.prepare('DELETE FROM name_fts WHERE id=?').run(item.id);
-    this.store.db.prepare('INSERT INTO name_fts VALUES(?,?,?)').run(item.id, item.title, item.path);
   }
   async apps() {
     const roots = [
@@ -246,6 +244,10 @@ class Search {
           continue;
         const stat = await fs.lstat(item.path);
         if (!stat.isFile() || stat.isSymbolicLink()) continue;
+        if (
+          this.store.db.prepare('SELECT id FROM entries WHERE path=? COLLATE NOCASE').get(item.path)
+        )
+          continue;
         this.store.db
           .prepare(
             'INSERT OR IGNORE INTO entries(id,title,path,kind,detail,modified,size) VALUES(?,?,?,?,?,?,?)',

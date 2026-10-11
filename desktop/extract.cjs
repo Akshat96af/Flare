@@ -48,13 +48,19 @@ async function validateOffice(file) {
     });
   });
 }
-async function extract(file, size) {
+async function extract(file, size, metadata = {}) {
   if (size > 12 * 1024 * 1024) return '';
   const ext = path.extname(file).toLowerCase();
-  if (textExtensions.has(ext)) return (await fs.readFile(file, 'utf8')).slice(0, 160000);
+  if (textExtensions.has(ext)) {
+    const text = await fs.readFile(file, 'utf8');
+    metadata.truncated = text.length > 160000;
+    return text.slice(0, 160000);
+  }
   if (ext === '.docx') {
     await validateOffice(file);
-    return (await require('mammoth').extractRawText({ path: file })).value.slice(0, 160000);
+    const text = (await require('mammoth').extractRawText({ path: file })).value;
+    metadata.truncated = text.length > 160000;
+    return text.slice(0, 160000);
   }
   if (ext === '.pdf') {
     const pdf = await pdfModule();
@@ -70,6 +76,7 @@ async function extract(file, size) {
         const page = await doc.getPage(i);
         text += (await page.getTextContent()).items.map((x) => x.str || '').join(' ') + '\n';
       }
+      metadata.truncated = doc.numPages > 150 || text.length >= 160000;
       return text.slice(0, 160000);
     } finally {
       await loading.destroy();
@@ -83,13 +90,18 @@ async function extract(file, size) {
       yauzl.open(file, { lazyEntries: true }, (err, zip) => {
         if (err) return reject(err);
         zip.on('error', reject);
-        zip.on('end', () => resolve(parts.join('\n').slice(0, 160000)));
+        zip.on('end', () => {
+          const text = parts.join('\n');
+          metadata.truncated ||= text.length > 160000;
+          resolve(text.slice(0, 160000));
+        });
         zip.on('entry', (entry) => {
           const wanted =
             ext === '.pptx'
               ? /^ppt\/slides\/slide\d+\.xml$/.test(entry.fileName)
               : /^xl\/(sharedStrings\.xml|worksheets\/sheet\d+\.xml)$/.test(entry.fileName);
           if (!wanted || entry.uncompressedSize > 2000000 || total > 12000000) {
+            if (wanted) metadata.truncated = true;
             zip.readEntry();
             return;
           }

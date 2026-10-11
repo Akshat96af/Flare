@@ -27,10 +27,6 @@ async function walk(dir) {
   store.db
     .prepare('INSERT OR REPLACE INTO entries(id,title,path,kind,detail) VALUES(?,?,?,?,?)')
     .run(folderId, path.basename(dir) || dir, dir, 'folder', path.dirname(dir));
-  store.db.prepare('DELETE FROM name_fts WHERE id=?').run(folderId);
-  store.db
-    .prepare('INSERT INTO name_fts VALUES(?,?,?)')
-    .run(folderId, path.basename(dir) || dir, dir);
   for (const entry of entries) {
     if (
       entry.isSymbolicLink() ||
@@ -55,7 +51,7 @@ async function walk(dir) {
     const id = 'file:' + file;
     seen.add(id);
     const previous = store.db
-      .prepare('SELECT modified,size,content FROM entries WHERE id=?')
+      .prepare('SELECT rowid,modified,size,content FROM entries WHERE id=?')
       .get(id);
     const readContents = settings.content && contentAllowed(file, settings);
     if (
@@ -63,7 +59,10 @@ async function walk(dir) {
       !previous ||
       previous.modified !== stat.mtimeMs ||
       previous.size !== stat.size ||
-      (!readContents && previous.content)
+      (!readContents && previous.content) ||
+      (readContents &&
+        previous.content &&
+        !store.db.prepare('SELECT rowid FROM content_fts WHERE rowid=?').get(previous.rowid))
     ) {
       let content = '';
       try {
@@ -75,11 +74,12 @@ async function walk(dir) {
       store.db
         .prepare('INSERT OR REPLACE INTO entries VALUES(?,?,?,?,?,?,?,?)')
         .run(id, entry.name, file, 'file', path.dirname(file), stat.mtimeMs, stat.size, content);
-      store.db.prepare('DELETE FROM name_fts WHERE id=?').run(id);
-      store.db.prepare('INSERT INTO name_fts VALUES(?,?,?)').run(id, entry.name, file);
-      store.db.prepare('DELETE FROM content_fts WHERE id=?').run(id);
+      const rowid = store.db.prepare('SELECT rowid FROM entries WHERE id=?').get(id).rowid;
+      store.db.prepare('DELETE FROM content_fts WHERE rowid=?').run(rowid);
       if (content)
-        store.db.prepare('INSERT INTO content_fts VALUES(?,?,?)').run(id, entry.name, content);
+        store.db
+          .prepare('INSERT INTO content_fts(rowid,id,title,content) VALUES(?,?,?,?)')
+          .run(rowid, id, entry.name, content);
       if (
         readContents &&
         imageExtensions.has(path.extname(file).toLowerCase()) &&
@@ -119,8 +119,6 @@ async function walk(dir) {
   for (const row of old)
     if (!seen.has(row.id)) {
       store.db.prepare('DELETE FROM entries WHERE id=?').run(row.id);
-      store.db.prepare('DELETE FROM name_fts WHERE id=?').run(row.id);
-      store.db.prepare('DELETE FROM content_fts WHERE id=?').run(row.id);
       store.db.prepare('DELETE FROM photos WHERE id=?').run(row.id);
     }
   store.db.exec('COMMIT');
