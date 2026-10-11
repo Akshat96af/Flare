@@ -13,6 +13,7 @@ import {
   LoaderCircle,
   Shield,
   Code2,
+  Zap,
 } from 'lucide-react';
 import { bridge, desktop, basename } from './bridge';
 import type { Settings as Prefs, IndexStatus } from './types';
@@ -289,6 +290,14 @@ export default function Settings({
                 </button>
               </div>
             )}
+            <p className="maker-signature">
+              <span className="maker-mark" aria-hidden="true">
+                <Zap size={15} strokeWidth={1.6} />
+              </span>
+              <span className="maker-copy">
+                <span className="maker-caption">Crafted by</span> <strong>Akshat96af</strong>
+              </span>
+            </p>
           </>
         )}
         {page === 'search' && (

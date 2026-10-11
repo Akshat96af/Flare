@@ -19,6 +19,7 @@ const AxeBuilder = require('@axe-core/playwright').default;
   const errors = [];
   try {
     const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     page.on('pageerror', (e) => errors.push(e.message));
     await expect
       .poll(() => page.evaluate(async () => (await window.flare.call('snapshot')).ready), {
@@ -32,8 +33,6 @@ const AxeBuilder = require('@axe-core/playwright').default;
     });
     assert.equal(await page.evaluate(() => CSS.supports('appearance', 'base-select')), true);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.getByRole('button', { name: /Intelligence/ }).click();
-    const provider = page.getByLabel('Use a model', { exact: true });
     const settle = () =>
       page.evaluate(async () => {
         await Promise.all(
@@ -43,6 +42,45 @@ const AxeBuilder = require('@axe-core/playwright').default;
             .map((a) => a.finished.catch(() => {})),
         );
       });
+    const signature = page.locator('.maker-signature');
+    await expect(signature).toHaveText('Crafted by Akshat96af');
+    for (const theme of ['dark', 'light']) {
+      await page.getByRole('button', { name: theme + ' theme' }).click();
+      await signature.scrollIntoViewIfNeeded();
+      await settle();
+      assert.equal(
+        await signature.evaluate(
+          (node) => !!node.previousElementSibling.querySelector('[aria-label="Developer mode"]'),
+        ),
+        true,
+        'Credit is below Developer mode',
+      );
+      const copy = page.locator('.maker-copy');
+      const before = await copy.boundingBox();
+      await signature.hover();
+      await settle();
+      assert.deepEqual(
+        await copy.boundingBox(),
+        before,
+        'Signature text stays stationary on hover',
+      );
+      await expect
+        .poll(() =>
+          page.locator('.maker-mark').evaluate((node) => getComputedStyle(node).transform),
+        )
+        .not.toBe('none');
+      const audit = await new AxeBuilder({ page })
+        .setLegacyMode(true)
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+        .analyze();
+      assert.deepEqual(
+        audit.violations.map((v) => v.id),
+        [],
+      );
+      await page.screenshot({ path: path.join(directory, `signature-${theme}.png`) });
+    }
+    await page.getByRole('button', { name: /Intelligence/ }).click();
+    const provider = page.getByLabel('Use a model', { exact: true });
     await provider.focus();
     assert.equal(
       await page
@@ -127,6 +165,29 @@ const AxeBuilder = require('@axe-core/playwright').default;
       ),
       '0s',
     );
+    await page.getByTitle('Back', { exact: true }).click();
+    await signature.scrollIntoViewIfNeeded();
+    await expect(signature).toBeVisible();
+    assert.equal(
+      await page.locator('.maker-copy').evaluate((node) => getComputedStyle(node).animationName),
+      'none',
+    );
+    await signature.hover();
+    assert.equal(
+      await page.locator('.maker-mark').evaluate((node) => getComputedStyle(node).transform),
+      'none',
+    );
+    assert.equal(await signature.evaluate((node) => node.scrollWidth > node.clientWidth), false);
+    await page.getByRole('switch', { name: 'Developer mode', exact: true }).click();
+    await signature.scrollIntoViewIfNeeded();
+    assert.equal(
+      await signature.evaluate((node) => node.previousElementSibling.className),
+      'diagnostic',
+    );
+    await page.getByRole('switch', { name: 'Liquid glass', exact: true }).click();
+    await signature.scrollIntoViewIfNeeded();
+    await expect(signature).toBeVisible();
+    await page.screenshot({ path: path.join(directory, 'signature-compact-reduced.png') });
     await page.getByTitle('Close settings').click();
     await page.keyboard.press('Escape');
     assert.equal(
@@ -147,6 +208,7 @@ const AxeBuilder = require('@axe-core/playwright').default;
           'Keyboard Escape',
           'Reduced motion',
           'Accessibility',
+          'Maker credit below Developer mode, stable hover, dark/light contrast, compact and reduced-motion fallbacks',
         ],
       }),
     );

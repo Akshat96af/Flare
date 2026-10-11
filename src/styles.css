@@ -519,6 +519,72 @@ kbd {
 .setting-row.last {
   border-bottom: 0;
 }
+.maker-signature {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 19px 0 1px;
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+  cursor: default;
+}
+.maker-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  transition:
+    transform 600ms var(--motion-out),
+    color 400ms ease,
+    border-color 400ms ease;
+}
+.maker-copy {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  animation: makerReveal 650ms var(--motion-out) 100ms backwards;
+}
+.maker-caption {
+  color: var(--muted);
+  margin-right: 3px;
+}
+.maker-copy strong {
+  font-weight: 600;
+  color: var(--text);
+}
+.maker-signature:hover .maker-mark {
+  color: var(--text);
+  border-color: var(--border);
+  transform: rotate(-8deg) scale(1.06);
+}
+@keyframes makerReveal {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .maker-copy {
+    animation: none;
+  }
+  .maker-mark {
+    transition: none;
+  }
+  .maker-signature:hover .maker-mark {
+    transform: none;
+  }
+}
 .segmented {
   position: relative;
   display: flex;
