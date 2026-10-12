@@ -648,6 +648,7 @@ async function saveSettings(patch) {
     }
     search.start(true);
   }
+  send('settings', next);
   return next;
 }
 async function refreshDrives() {
@@ -1108,6 +1109,7 @@ async function dispatch(method, data = {}) {
         speechModel,
       };
       store.saveSettings(prefs);
+      send('settings', prefs);
       return prefs;
     }
     case 'ai-plan': {
@@ -1446,8 +1448,8 @@ app
         clipboardHistory.prune();
         const sequence = clipboardSequence();
         if (sequence !== undefined && sequence === lastClipboardSequence) return;
-        lastClipboardSequence = sequence;
         clipboardHistory.capture(clipboard);
+        lastClipboardSequence = sequence;
       } catch {
         /* Clipboard ownership can change during a read; try the next update. */
       }

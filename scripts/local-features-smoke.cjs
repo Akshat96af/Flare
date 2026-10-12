@@ -45,7 +45,10 @@ const AxeBuilder = require('@axe-core/playwright').default;
       })
       .toBe(true);
     await instance.evaluate(
-      ({ dialog }, locations) => {
+      ({ dialog, clipboard, nativeImage }, locations) => {
+        clipboard.readImage = () => nativeImage.createEmpty();
+        clipboard.readText = () => '';
+        clipboard.has = () => false;
         global.localFeatures = {
           consent: 0,
           decision: 0,
@@ -234,6 +237,7 @@ const AxeBuilder = require('@axe-core/playwright').default;
     assert.equal(requests.length, 1);
     assert.match(requests[0].messages[1].content, /82741/);
     assert.equal(JSON.stringify(requests).includes('data:image'), false);
+    await expect(page.locator('.typed-answer > span').first()).toHaveText('FLARE INVOICE 82741');
     await page.screenshot({ path: path.join(directory, 'clipboard-ocr-ai.png') });
     const textAudit = await new AxeBuilder({ page })
       .setLegacyMode(true)
@@ -248,6 +252,9 @@ const AxeBuilder = require('@axe-core/playwright').default;
     assert.equal(await instance.evaluate(() => global.localFeatures.copiedImage), 1);
     await page.evaluate(() => window.flare.call('clipboard-clear'));
     await expect(page.getByRole('option', { name: /Screenshot/ })).toHaveCount(0);
+    await expect(page.getByText('Clipboard is empty', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Ask AI', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Search Google', exact: true })).toHaveCount(0);
     await page.evaluate(() => window.flare.call('settings', { clipboard: false }));
     await page.getByRole('tab', { name: 'All', exact: true }).click();
     checks.push(
@@ -259,6 +266,24 @@ const AxeBuilder = require('@axe-core/playwright').default;
       win.setSize(380, 500);
       win.setResizable(false);
     });
+    await page.evaluate(() => window.flare.call('settings', { clipboard: true }));
+    await expect(
+      page.getByRole('button', { name: 'Clipboard history', exact: true }),
+    ).toBeVisible();
+    assert.equal(
+      await page
+        .locator('.launcher-footer')
+        .evaluate((node) => node.scrollWidth > node.clientWidth),
+      false,
+    );
+    assert.equal(
+      await page.locator('.launcher-footer').evaluate((node) => {
+        const brand = node.querySelector('.footer-brand').getBoundingClientRect();
+        const tools = node.querySelector('.footer-tools').getBoundingClientRect();
+        return brand.right > tools.left;
+      }),
+      false,
+    );
     await input.fill('receipt');
     await page.getByRole('button', { name: 'File actions for receipt.png', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Resize image', exact: true })).toBeVisible();

@@ -88,6 +88,8 @@ Enable Clipboard history, copy a screenshot, then open the Clipboard tab. Previe
 
 With Intelligence connected, extracted text also offers **Summarize**, **Clean up text**, and **Extract action items**. Cloud processing asks permission, sends only a bounded text excerpt (not the image), and preserves the original OCR result. AI corrections can still be wrong; verify important names, dates, and amounts.
 
+![Clipboard screenshot text extraction and AI actions](docs/images/clipboard-ocr.png)
+
 Conversions create new copies. Organization and older-file cleanup use reviewed plans, a durable history, and Undo. Cleanup candidates are based on age, not a claim that a file is unused. Balanced trust can skip an extra conversion-output review, never move/cleanup approval.
 
 Undo skips files edited afterward or occupied original locations. It cannot restore missing recovery files. Recovery does not expire automatically; deleting application data can destroy recovery availability.
@@ -132,6 +134,8 @@ When enabled Intelligence has no local result, Flare offers Ask AI. Responses ap
 Normal text requests retry HTTP 503 up to twice with bounded backoff. Attempts can count toward usage. Speech uploads and connection tests are not automatically retried.
 
 Setup guides: [Gemini and voice](docs/GEMINI_AND_VOICE.md), [Windows, offline Whisper, and Groq voice](docs/VOICE_WHISPER.md), [free AI and music](docs/FREE_AI_AND_MUSIC.md).
+
+![Offline Whisper voice settings](docs/images/offline-voice.png)
 
 ## Build From Source
 

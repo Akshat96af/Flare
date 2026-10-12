@@ -1,5 +1,6 @@
 !include nsDialogs.nsh
 !include LogicLib.nsh
+!ifndef BUILD_UNINSTALLER
 Var FlareActions
 Var FlareOcr
 Var FlareVoice
@@ -12,6 +13,7 @@ Var FlareModel
 Var FlareComponentsLoaded
 Var FlareRuntime
 Var FlareRuntimeState
+!endif
 
 !macro customInit
   StrCpy $FlareActionsState 1
@@ -26,6 +28,8 @@ Var FlareRuntimeState
   Page custom FlareComponentsCreate FlareComponentsLeave
 !macroend
 
+!macro customHeader
+!ifndef BUILD_UNINSTALLER
 Function FlareComponentsCreate
   ${If} $FlareComponentsLoaded == 0
     ${If} ${FileExists} "$INSTDIR\resources\optional\installed.ini"
@@ -90,6 +94,8 @@ Function FlareComponentsLeave
     StrCpy $FlareModel "base.en"
   ${EndIf}
 FunctionEnd
+!endif
+!macroend
 
 !macro customInstall
   ${If} $FlareVoiceState == ${BST_CHECKED}

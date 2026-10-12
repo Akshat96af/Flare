@@ -2,15 +2,15 @@ const { workerData, parentPort } = require('node:worker_threads');
 (async () => {
   if (workerData.bytes) {
     const recognizer = require('./ocr.cjs').createRecognizer();
+    let text;
     try {
       const bytes = Buffer.from(workerData.bytes);
       if (bytes.length > 12 * 1024 * 1024) throw new Error('Screenshot exceeds 12 MB.');
-      parentPort.postMessage({
-        result: { text: await recognizer.recognize(bytes), pages: 1, truncated: false },
-      });
+      text = await recognizer.recognize(bytes);
     } finally {
       await recognizer.close();
     }
+    parentPort.postMessage({ result: { text, pages: 1, truncated: false } });
     return;
   }
   const result = await require('./ocr.cjs').readOcr(workerData.file, workerData.size, {

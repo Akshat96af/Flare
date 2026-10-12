@@ -866,16 +866,20 @@ export default function App() {
                 <span>
                   {searching
                     ? 'Searching...'
-                    : desktop
-                      ? 'No results'
-                      : 'No local results in browser preview'}
+                    : kind === 'clipboard' && !query.trim()
+                      ? settings?.clipboard
+                        ? 'Clipboard is empty'
+                        : 'Clipboard history is off'
+                      : desktop
+                        ? 'No results'
+                        : 'No local results in browser preview'}
                 </span>
-                {intelligenceOn && (
+                {!!query.trim() && intelligenceOn && (
                   <button className="subtle ask-ai" onClick={aiSearch} disabled={busy || aiBusy}>
                     <Sparkles size={16} /> {aiBusy ? 'Asking AI...' : 'Ask AI'}
                   </button>
                 )}
-                {!intelligenceOn && (
+                {!!query.trim() && !intelligenceOn && (
                   <button
                     className="subtle"
                     onClick={() => googleFallback(query)}

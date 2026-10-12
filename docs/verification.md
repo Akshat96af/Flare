@@ -1,5 +1,23 @@
 # Verification
 
+## Local Features and Clipboard: 2026-10-12
+
+The latest unit run passed 82 tests, including clipboard consent, sensitive-content markers, bounded screenshot memory, restart/expiry/clearing, and finite AI text actions that cannot execute commands. Source desktop verification passed real image/scanned-PDF OCR, format-aware actions, reviewed resizing/Undo, and offline voice settings.
+
+The generated screenshot workflow also passed automatic clipboard capture, preview, copy-back, local OCR, refused cloud consent with zero requests, and one approved mocked text-only AI request. Tested states had zero automated accessibility violations and no renderer errors; compact layout and reduced motion passed. Evidence: ignored `Files/private/verification/local-ui-1791744431469/`.
+
+The voice regression suite passed with synthetic audio and mocked providers, without accessing a real microphone or paid API. A separate CPU Whisper run transcribed generated Windows speech. These checks do not establish human transcription accuracy. Clean-machine installation, microphone diversity, public-release dependency/license review and unsigned distribution remain outstanding.
+
+The rebuilt packaged executable passed the same local-feature/clipboard workflow in `local-ui-1791745122877`, including image and scanned-PDF recognition. Packaging initially exposed missing dependencies in the external Tesseract worker; its runtime dependency closure is now unpacked and the regression passes. Packaged files match source and exclude private workspace material. The bundled CPU Whisper engine separately transcribed generated speech as "Open YouTube. Set brightness to 100%." without uploads or retained temporary recordings (`packaged-whisper-1791744902840`).
+
+Packaged settings/dropdown motion checks passed (`settings-motion-1791745181555`), including keyboard Escape, 380px layout, dark/light menus, reduced motion and automated accessibility. The packaged synthetic voice regression also passed (`voice-1791745260955`) with no microphone access, real provider calls or renderer errors.
+
+Native opening checks passed three real Alt+Space opens from hidden settings, stable geometry, one monotonic animation and immediate reduced-motion behavior (`launch-motion-1791745323368`). Final source workflow checks also cover the empty Clipboard state without idle AI/Google actions and a non-overlapping 380px footer with clipboard history enabled (`local-ui-1791745538675`).
+
+The final packaged executable passed those same empty-state, clipboard-enabled compact-footer and complete local-feature checks (`local-ui-1791745669802`). The NSIS setup and portable ZIP include optional payloads; installer choices do not grant file or microphone permissions. Compilation does not replace a clean-machine setup/uninstall walkthrough.
+
+Final compilation completed successfully on 2026-10-12: `release/Flare-0.1.0-x64.exe` and `release/Flare-0.1.0-x64.zip`. The setup includes its component-selection page and verified offline payloads. Both artifacts remain unsigned preview builds; nothing was published automatically.
+
 Local evidence stays in ignored `Files/private/verification/`. Implementation and validation are separate.
 
 `npm test` covers ranking/command rejection, background query refresh, content snippets/exclusions, Office/PDF text extraction, protected locations, organization/restart/undo, collisions/later edits, selected approvals, changed multi-input rejection, actual WebP/PDF output/rendering, EXIF preference/fallback, and binary cloud-audio construction without network calls.

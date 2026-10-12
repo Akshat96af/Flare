@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const asar = require('@electron/asar');
 const archive = 'release/win-unpacked/resources/app.asar';
+if (asar.listPackage(archive).some((file) => /[\\/]Files[\\/]private(?:[\\/]|$)/i.test(file)))
+  throw new Error('Private workspace material must not be packaged.');
 const files = [
   'desktop/main.cjs',
   'desktop/ai.cjs',
